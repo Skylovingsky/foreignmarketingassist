@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as XLSX from 'xlsx';
 import csvParser from 'csv-parser';
 import { Readable } from 'stream';
+import crypto from 'crypto';
 import { WebCrawlerService } from '../lib/crawler.js';
 import { AIAnalyzerService, AnalysisConfig } from '../lib/ai-analyzer.js';
 
@@ -50,6 +51,7 @@ interface Customer {
     belongingConfidence: number;
   };
   analysis?: string;
+  detailedAnalysisReport?: string; // 新增：详细分析报告
   lastAnalyzed?: string;
   createdAt: string;
   updatedAt: string;
@@ -255,6 +257,138 @@ function validateCustomerData(data: any, rowIndex: number): { isValid: boolean; 
   } catch (error) {
     errors.push({ row: rowIndex, field: 'general', message: '数据格式错误' });
     return { isValid: false, errors };
+  }
+}
+
+// 生成详细分析报告的方法
+async function generateDetailedAnalysisReport(
+  customer: Customer, 
+  crawlResults: any[], 
+  analysis: any, 
+  aiAnalyzer: AIAnalyzerService
+): Promise<string> {
+  try {
+    // 汇总所有爬取的信息
+    const allEmails = [...new Set(crawlResults.flatMap(r => r.contactEmails || []))];
+    const allPhones = [...new Set(crawlResults.flatMap(r => r.phones || []))];
+    const allContent = crawlResults.map(r => r.description || '').filter(d => d.length > 0);
+    
+    const reportPrompt = `请为以下公司生成一份详细的外贸合作分析报告：
+
+**目标公司信息：**
+- 公司名称: ${customer.companyName}
+- 所在国家: ${customer.country}
+- 交易次数: ${customer.transactionCount || 'N/A'}
+- 交易金额: ${customer.transactionAmount || 'N/A'}
+
+**网站分析数据：**
+爬取到 ${crawlResults.length} 个相关网站的信息：
+${crawlResults.map((result, i) => `
+${i + 1}. ${result.website}
+   评分: ${result.score?.overall || 'N/A'}
+   内容摘要: ${result.description?.substring(0, 300) || 'N/A'}...
+`).join('\n')}
+
+**联系信息汇总：**
+- 发现邮箱: ${allEmails.length} 个 (${allEmails.slice(0, 3).join(', ')}${allEmails.length > 3 ? '...' : ''})
+- 发现电话: ${allPhones.length} 个
+
+**AI评分结果：**
+- 整体评分: ${analysis.overallScore}/100
+- 优先级: ${analysis.priority}
+
+请生成一份1000-1500字的详细分析报告，包含以下内容：
+
+1. **公司概况分析** - 基于网站信息分析公司的业务性质、规模和实力
+2. **合作潜力评估** - 从外贸代理角度评估合作价值和机会
+3. **风险评估** - 识别潜在的合作风险和注意事项  
+4. **联系策略建议** - 具体的联系方式和沟通策略
+5. **后续行动计划** - 详细的跟进步骤和时间安排
+
+请用专业的商务语言撰写，确保内容实用且可操作。`;
+
+    const response = await aiAnalyzer['qwenClient'].chat({
+      messages: [
+        {
+          id: crypto.randomUUID(),
+          role: 'system',
+          content: '你是一位资深的外贸商务分析专家，擅长企业尽职调查和商务合作评估。请基于提供的信息生成专业、详细的商务分析报告。',
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: reportPrompt,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    });
+
+    return response.message.content;
+  } catch (error) {
+    console.error('生成详细报告失败:', error);
+    return `基于对 ${customer.companyName} 的初步分析，该公司位于 ${customer.country}，具有一定的商业价值。建议进行进一步的深入调研和直接联系。`;
+  }
+}
+
+// AI辅助选择最佳网站的方法
+async function selectBestWebsiteWithAI(candidates: any[], customer: Customer): Promise<any | null> {
+  try {
+    const aiAnalyzer = new AIAnalyzerService();
+    
+    // 构建候选网站信息摘要
+    const candidatesSummary = candidates.map((candidate, index) => {
+      return `${index + 1}. ${candidate.website}
+   - 公司名称: ${candidate.companyName || 'N/A'}
+   - 描述: ${candidate.description?.substring(0, 200) || 'N/A'}...
+   - 评分: ${candidate.score.overall}
+   - 联系方式: ${candidate.contactEmails?.length || 0} 邮箱, ${candidate.phones?.length || 0} 电话`;
+    }).join('\n\n');
+
+    const selectionPrompt = `我需要为公司 "${customer.companyName}" (${customer.country}) 选择最佳的官方网站。
+
+以下是搜索到的候选网站：
+${candidatesSummary}
+
+请分析这些候选网站，选择最有可能是 "${customer.companyName}" 官方网站的选项。考虑因素包括：
+1. 公司名称匹配度
+2. 网站内容相关性
+3. 联系信息完整性
+4. 网站专业性评分
+
+请只回复选择的编号（1-${candidates.length}），如果都不合适请回复0。`;
+
+    // 调用AI进行选择
+    const response = await aiAnalyzer['qwenClient'].chat({
+      messages: [
+        {
+          id: crypto.randomUUID(),
+          role: 'system',
+          content: '你是一个专业的企业网站识别专家，能够准确判断哪个网站最可能是目标公司的官方网站。',
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: selectionPrompt,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    });
+
+    const selection = parseInt(response.message.content.trim());
+    console.log(`AI选择结果: ${selection} (总共 ${candidates.length} 个选项)`);
+
+    if (selection >= 1 && selection <= candidates.length) {
+      return candidates[selection - 1];
+    } else {
+      console.log('AI判断所有候选网站都不合适，选择评分最高的');
+      return candidates.sort((a, b) => b.score.overall - a.score.overall)[0];
+    }
+  } catch (error) {
+    console.error('AI选择网站失败，回退到评分最高的:', error);
+    // 如果AI选择失败，回退到评分最高的网站
+    return candidates.sort((a, b) => b.score.overall - a.score.overall)[0];
   }
 }
 
@@ -671,32 +805,48 @@ export default async function customersRoutes(fastify: FastifyInstance) {
           const searchQuery = {
             keywords: companyKeywords.slice(0, 2), // 最多使用2个关键词
             location: customer.country,
-            maxResults: 5 // 增加搜索结果数量
+            maxResults: 15 // 大幅增加搜索结果数量，确保找到更多候选网站
           };
           
           const searchResults = await crawler.searchAndCrawlCompanies(searchQuery);
           
-          // 过滤出真正的公司网站（排除PDF、政府网站等）
-          const validWebsites = searchResults.filter(result => 
+          // 基础过滤：排除明显无关的网站
+          const basicFilteredWebsites = searchResults.filter(result => 
             !result.error && 
             result.website &&
             !result.website.includes('.pdf') &&
             !result.website.includes('.doc') &&
             !result.website.includes('scribd.com') &&
-            !result.website.includes('gov.') &&
+            !result.website.includes('.gov') &&
             !result.website.includes('wikipedia.org') &&
             !result.website.includes('linkedin.com') &&
             !result.website.includes('facebook.com') &&
-            result.score.overall >= 50 // 只选择评分较高的结果
+            !result.website.includes('twitter.com') &&
+            !result.website.includes('instagram.com') &&
+            result.score.overall >= 30 // 降低基础门槛
           );
 
-          if (validWebsites.length > 0) {
-            websiteToAnalyze = validWebsites[0].website;
-            console.log(`找到有效网站: ${websiteToAnalyze}`);
+          console.log(`基础过滤后剩余 ${basicFilteredWebsites.length} 个网站`);
+
+          if (basicFilteredWebsites.length > 0) {
+            // 如果有多个候选网站，使用AI来判断哪个最匹配
+            let selectedWebsite;
             
-            // 更新客户的网站信息
-            if (customerIndex !== -1) {
-              customers[customerIndex].website = websiteToAnalyze;
+            if (basicFilteredWebsites.length === 1) {
+              selectedWebsite = basicFilteredWebsites[0];
+            } else {
+              // 使用AI分析多个候选网站，选择最佳匹配
+              selectedWebsite = await selectBestWebsiteWithAI(basicFilteredWebsites, customer);
+            }
+
+            if (selectedWebsite) {
+              websiteToAnalyze = selectedWebsite.website;
+              console.log(`选择网站进行分析: ${websiteToAnalyze} (评分: ${selectedWebsite.score.overall})`);
+              
+              // 更新客户的网站信息
+              if (customerIndex !== -1) {
+                customers[customerIndex].website = websiteToAnalyze;
+              }
             }
           } else {
             return reply.status(400).send({
@@ -712,7 +862,7 @@ export default async function customersRoutes(fastify: FastifyInstance) {
                 manualInput: true,
                 searchKeywords: companyKeywords,
                 foundResults: searchResults.length,
-                validResults: validWebsites.length
+                validResults: basicFilteredWebsites.length
               }
             });
           }
@@ -743,6 +893,13 @@ export default async function customersRoutes(fastify: FastifyInstance) {
         googleSearchEngineId: process.env.GOOGLE_SEARCH_ENGINE_ID,
       });
 
+      if (!websiteToAnalyze) {
+        return reply.status(400).send({
+          error: '无法分析',
+          message: '没有有效的网站URL进行分析',
+        });
+      }
+
       const crawlResult = await crawler.crawlCompanyWebsite(websiteToAnalyze);
       
       if (crawlResult.error) {
@@ -753,7 +910,58 @@ export default async function customersRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // 2. 进行AI分析
+      // 2. 如果找到了多个相关网站，尝试爬取更多信息
+      let allCrawlResults = [crawlResult];
+      let searchResults: any[] = [];
+      
+      // 重新获取搜索结果用于额外爬取
+      if (!websiteToAnalyze || websiteToAnalyze === customer.website) {
+        try {
+          const companyKeywords = [
+            customer.companyName,
+            customer.companyName.replace(/\s+(LIMITED|LTD|PRIVATE|PVT|CORPORATION|CORP|INC|INCORPORATED|LLC|CO|COMPANY|GROUP|ENTERPRISE|SOLUTIONS|SERVICES|SYSTEMS)$/gi, '').trim()
+          ].filter(keyword => keyword.length > 3);
+
+          const searchQuery = {
+            keywords: companyKeywords.slice(0, 2),
+            location: customer.country,
+            maxResults: 10
+          };
+          
+          searchResults = await crawler.searchAndCrawlCompanies(searchQuery);
+          
+          const additionalWebsites = searchResults.filter(result => 
+            !result.error && 
+            result.website &&
+            result.website !== websiteToAnalyze &&
+            !result.website.includes('.pdf') &&
+            !result.website.includes('.doc') &&
+            result.score.overall >= 40
+          );
+
+          console.log(`找到 ${additionalWebsites.length} 个额外的候选网站进行爬取`);
+          
+          // 爬取前3个额外网站获取更多信息
+          for (let i = 0; i < Math.min(3, additionalWebsites.length); i++) {
+            try {
+              const additionalCrawl = await crawler.crawlCompanyWebsite(additionalWebsites[i].website);
+              if (!additionalCrawl.error) {
+                allCrawlResults.push(additionalCrawl);
+              }
+              // 添加延迟避免过快请求
+              await new Promise(resolve => setTimeout(resolve, 1500));
+            } catch (error) {
+              console.error(`额外爬取 ${additionalWebsites[i].website} 失败:`, error);
+            }
+          }
+        } catch (error) {
+          console.error('获取额外搜索结果失败:', error);
+        }
+      }
+
+      console.log(`总共爬取了 ${allCrawlResults.length} 个网站的信息`);
+
+      // 3. 进行综合AI分析
       const aiAnalyzer = new AIAnalyzerService();
       const businessContext = {
         companyName: "外贸代理公司",
@@ -765,11 +973,17 @@ export default async function customersRoutes(fastify: FastifyInstance) {
 
       const analysisConfig: AnalysisConfig = {
         businessContext,
-        analysisDepth: 'detailed',
+        analysisDepth: 'comprehensive', // 使用更深入的分析
         language: 'zh',
       };
 
+      // 使用主要网站进行分析，但结合所有爬取的信息
       const analysis = await aiAnalyzer.analyzeCompany(crawlResult, analysisConfig);
+      
+      // 生成综合分析报告
+      const detailedAnalysisReport = await generateDetailedAnalysisReport(
+        customer, allCrawlResults, analysis, aiAnalyzer
+      );
 
       // 3. 更新客户数据
       if (customerIndex !== -1) {
@@ -777,14 +991,14 @@ export default async function customersRoutes(fastify: FastifyInstance) {
           ...customers[customerIndex],
           status: 'ANALYZED',
           leadScore: analysis.overallScore,
-          crawledUrls: [{
-            url: websiteToAnalyze,
-            title: crawlResult.companyName || customer.companyName,
-            content: crawlResult.description || '',
-            emails: crawlResult.contactEmails || [],
-            phones: crawlResult.phones || [],
+          crawledUrls: allCrawlResults.map(result => ({
+            url: result.website,
+            title: result.companyName || customer.companyName,
+            content: result.description || '',
+            emails: result.contactEmails || [],
+            phones: result.phones || [],
             keywords: []
-          }],
+          })),
           contacts: (crawlResult.contactEmails || []).map((email: string, idx: number) => ({
             name: `联系人 ${idx + 1}`,
             title: '未知',
@@ -803,6 +1017,7 @@ export default async function customersRoutes(fastify: FastifyInstance) {
             belongingConfidence: analysis.overallScore || 0,
           },
           analysis: analysis.recommendation,
+          detailedAnalysisReport: detailedAnalysisReport, // 存储详细分析报告
           lastAnalyzed: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };

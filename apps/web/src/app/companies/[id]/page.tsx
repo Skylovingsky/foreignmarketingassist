@@ -46,6 +46,7 @@ interface CompanyDetail {
     belongingConfidence: number
   }
   analysis?: string
+  detailedAnalysisReport?: string
   lastAnalyzed?: string
   createdAt: string
 }

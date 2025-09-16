@@ -42,6 +42,7 @@ interface CompanyAnalysisData {
     type: 'personal' | 'generic'
   }>
   lastAnalyzed?: string
+  detailedAnalysisReport?: string
 }
 
 function AnalysisContent() {
@@ -223,6 +224,41 @@ function AnalysisContent() {
                     <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
                       {company.analysis}
                     </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Detailed Analysis Report */}
+            {company.detailedAnalysisReport && (
+              <div className="card p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                  <BarChart3 className="w-5 h-5 mr-2" />
+                  详细商务分析报告
+                </h3>
+                <div className="prose max-w-none">
+                  <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                    <div className="text-gray-800 leading-relaxed whitespace-pre-wrap text-sm">
+                      {company.detailedAnalysisReport}
+                    </div>
+                  </div>
+                  
+                  {/* Report Actions */}
+                  <div className="mt-4 flex items-center justify-between text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
+                    <div>
+                      报告生成时间: {company.lastAnalyzed && new Date(company.lastAnalyzed).toLocaleString('zh-CN')}
+                    </div>
+                    <div className="flex space-x-3">
+                      <button 
+                        onClick={() => navigator.clipboard.writeText(company.detailedAnalysisReport || '')}
+                        className="text-indigo-600 hover:text-indigo-700 flex items-center"
+                      >
+                        <span className="mr-1">📋</span> 复制报告
+                      </button>
+                      <button className="text-green-600 hover:text-green-700 flex items-center">
+                        <span className="mr-1">📄</span> 导出PDF
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

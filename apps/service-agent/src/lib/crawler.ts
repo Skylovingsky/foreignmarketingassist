@@ -161,16 +161,58 @@ export class WebCrawlerService {
 
       const data = await response.json();
       
-      if (!data.items) {
+      console.log(`🔍 Google API响应数据:`, {
+        totalResults: data.searchInformation?.totalResults || '未知',
+        searchTime: data.searchInformation?.searchTime || '未知',
+        itemsFound: data.items ? data.items.length : 0,
+        hasItems: !!data.items
+      });
+      
+      if (!data.items || data.items.length === 0) {
+        console.log(`⚠️ 复杂查询无结果，尝试简化查询...`);
+        
+        // 尝试更简单的查询作为备用方案
+        if (query.keywords.length > 0) {
+          const fallbackQuery = `"${query.keywords[0]}"`;
+          console.log(`🔄 备用查询: ${fallbackQuery}`);
+          
+          try {
+            const fallbackUrl = new URL('https://www.googleapis.com/customsearch/v1');
+            fallbackUrl.searchParams.set('key', this.config.googleApiKey!);
+            fallbackUrl.searchParams.set('cx', this.config.googleSearchEngineId!);
+            fallbackUrl.searchParams.set('q', fallbackQuery);
+            fallbackUrl.searchParams.set('num', String(query.maxResults || 10));
+            
+            const fallbackResponse = await fetch(fallbackUrl.toString());
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              if (fallbackData.items && fallbackData.items.length > 0) {
+                console.log(`✅ 备用查询成功找到 ${fallbackData.items.length} 个结果`);
+                return fallbackData.items.map((item: any) => ({
+                  title: item.title,
+                  link: item.link,
+                  snippet: item.snippet,
+                  displayLink: item.displayLink,
+                }));
+              }
+            }
+          } catch (fallbackError) {
+            console.error('备用查询也失败:', fallbackError);
+          }
+        }
+        
         return [];
       }
 
-      return data.items.map((item: any) => ({
+      const results = data.items.map((item: any) => ({
         title: item.title,
         link: item.link,
         snippet: item.snippet,
         displayLink: item.displayLink,
       }));
+      
+      console.log(`✅ 成功处理 ${results.length} 个搜索结果`);
+      return results;
     } catch (error) {
       console.error('Google搜索失败:', error);
       throw error;

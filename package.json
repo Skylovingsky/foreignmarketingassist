@@ -27,16 +27,19 @@
   },
   "devDependencies": {
     "@turbo/gen": "^1.10.12",
-    "turbo": "^1.10.12",
-    "prettier": "^3.0.3",
-    "typescript": "^5.2.2",
-    "eslint": "^8.48.0",
     "@typescript-eslint/eslint-plugin": "^6.7.2",
-    "@typescript-eslint/parser": "^6.7.2"
+    "@typescript-eslint/parser": "^6.7.2",
+    "eslint": "^8.48.0",
+    "prettier": "^3.0.3",
+    "turbo": "^1.10.12",
+    "typescript": "^5.2.2"
   },
   "packageManager": "pnpm@8.6.12",
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"
+  },
+  "dependencies": {
+    "pm2": "^6.0.11"
   }
 }

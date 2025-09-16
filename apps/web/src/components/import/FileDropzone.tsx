@@ -13,39 +13,40 @@ export default function FileDropzone({ onUpload }: FileDropzoneProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const processFile = async (file: File): Promise<BatchUploadResult> => {
-    // 模拟文件处理过程
-    setUploadProgress(0);
-    
-    return new Promise((resolve) => {
-      const interval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            
-            // 模拟处理结果
-            const result: BatchUploadResult = {
-              total: 150,
-              success: 142,
-              failed: 8,
-              errors: [
-                { row: 23, field: 'email', message: '邮箱格式不正确' },
-                { row: 45, field: 'phone', message: '电话号码格式不正确' },
-                { row: 67, field: 'company', message: '公司名称不能为空' },
-                { row: 89, field: 'country', message: '国家代码无效' },
-                { row: 101, field: 'email', message: '邮箱重复' },
-                { row: 123, field: 'industry', message: '行业分类不存在' },
-                { row: 134, field: 'website', message: '网站URL格式不正确' },
-                { row: 148, field: 'employeeCount', message: '员工数必须是正整数' },
-              ],
-            };
-            
-            resolve(result);
-            return 100;
-          }
-          return prev + Math.random() * 15;
-        });
-      }, 200);
-    });
+    try {
+      setUploadProgress(10);
+      
+      // 创建FormData用于文件上传
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      setUploadProgress(30);
+      
+      // 调用后端API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev'}/api/customers/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      setUploadProgress(70);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '文件上传失败');
+      }
+      
+      const result = await response.json();
+      setUploadProgress(100);
+      
+      if (result.success && result.data) {
+        return result.data;
+      } else {
+        throw new Error(result.message || '文件处理失败');
+      }
+    } catch (error) {
+      console.error('文件上传错误:', error);
+      throw error;
+    }
   };
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {

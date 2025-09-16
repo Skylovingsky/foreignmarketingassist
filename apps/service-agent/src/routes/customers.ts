@@ -1,0 +1,581 @@
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { z } from 'zod';
+import * as XLSX from 'xlsx';
+import csvParser from 'csv-parser';
+import { Readable } from 'stream';
+
+// 客户数据类型定义
+interface Customer {
+  id: string;
+  companyName: string;
+  contactName: string;
+  email: string;
+  phone?: string;
+  website?: string;
+  country?: string;
+  industry?: string;
+  employeeCount?: number;
+  position?: string;
+  department?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 内存存储（生产环境应该用数据库）
+let customers: Customer[] = [];
+let customerIdCounter = 1;
+
+// 请求验证schemas
+const uploadFileSchema = z.object({
+  filename: z.string(),
+  mimetype: z.string(),
+  encoding: z.string(),
+});
+
+const createCustomerSchema = z.object({
+  companyName: z.string().min(1, '公司名称不能为空'),
+  contactName: z.string().min(1, '联系人不能为空'),
+  email: z.string().email('邮箱格式不正确'),
+  phone: z.string().optional(),
+  website: z.string().url().optional().or(z.literal('')),
+  country: z.string().optional(),
+  industry: z.string().optional(),
+  employeeCount: z.number().int().positive().optional(),
+  position: z.string().optional(),
+  department: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+const updateCustomerSchema = createCustomerSchema.partial();
+
+// 批量上传结果接口
+interface BatchUploadResult {
+  total: number;
+  success: number;
+  failed: number;
+  errors: Array<{
+    row: number;
+    field: string;
+    message: string;
+  }>;
+  customers?: Customer[];
+}
+
+// 解析CSV文件
+async function parseCSV(buffer: Buffer): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    const results: any[] = [];
+    const stream = Readable.from(buffer);
+    
+    stream
+      .pipe(csvParser())
+      .on('data', (data: any) => results.push(data))
+      .on('end', () => resolve(results))
+      .on('error', reject);
+  });
+}
+
+// 解析Excel文件
+function parseExcel(buffer: Buffer): any[] {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  return XLSX.utils.sheet_to_json(worksheet);
+}
+
+// 标准化字段名映射
+const fieldMapping: Record<string, string> = {
+  '公司名称': 'companyName',
+  'company': 'companyName',
+  'companyname': 'companyName',
+  '联系人': 'contactName',
+  'contact': 'contactName',
+  'contactname': 'contactName',
+  'name': 'contactName',
+  '邮箱': 'email',
+  'email': 'email',
+  'mail': 'email',
+  '电话': 'phone',
+  'phone': 'phone',
+  'tel': 'phone',
+  'telephone': 'phone',
+  '网站': 'website',
+  'website': 'website',
+  'url': 'website',
+  'site': 'website',
+  '国家': 'country',
+  'country': 'country',
+  'nation': 'country',
+  '行业': 'industry',
+  'industry': 'industry',
+  'sector': 'industry',
+  '员工数': 'employeeCount',
+  'employees': 'employeeCount',
+  'employeecount': 'employeeCount',
+  'staff': 'employeeCount',
+  '职位': 'position',
+  'position': 'position',
+  'title': 'position',
+  '部门': 'department',
+  'department': 'department',
+  'dept': 'department',
+  '备注': 'notes',
+  'notes': 'notes',
+  'note': 'notes',
+  'remark': 'notes',
+};
+
+// 标准化数据
+function normalizeRowData(row: any): any {
+  const normalized: any = {};
+  
+  Object.keys(row).forEach(key => {
+    const lowerKey = key.toLowerCase().trim();
+    const mappedKey = fieldMapping[lowerKey] || fieldMapping[key] || lowerKey;
+    if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
+      normalized[mappedKey] = row[key];
+    }
+  });
+  
+  return normalized;
+}
+
+// 验证客户数据
+function validateCustomerData(data: any, rowIndex: number): { isValid: boolean; errors: any[]; customer?: Customer } {
+  const errors: any[] = [];
+  
+  try {
+    const normalized = normalizeRowData(data);
+    
+    // 必填字段检查
+    if (!normalized.companyName) {
+      errors.push({ row: rowIndex, field: 'companyName', message: '公司名称不能为空' });
+    }
+    if (!normalized.contactName) {
+      errors.push({ row: rowIndex, field: 'contactName', message: '联系人不能为空' });
+    }
+    if (!normalized.email) {
+      errors.push({ row: rowIndex, field: 'email', message: '邮箱不能为空' });
+    }
+    
+    // 邮箱格式验证
+    if (normalized.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.email)) {
+      errors.push({ row: rowIndex, field: 'email', message: '邮箱格式不正确' });
+    }
+    
+    // 网站URL验证
+    if (normalized.website && normalized.website !== '') {
+      try {
+        new URL(normalized.website);
+      } catch {
+        errors.push({ row: rowIndex, field: 'website', message: '网站URL格式不正确' });
+      }
+    }
+    
+    // 员工数验证
+    if (normalized.employeeCount && (!Number.isInteger(Number(normalized.employeeCount)) || Number(normalized.employeeCount) <= 0)) {
+      errors.push({ row: rowIndex, field: 'employeeCount', message: '员工数必须是正整数' });
+    }
+    
+    if (errors.length === 0) {
+      const customer: Customer = {
+        id: (customerIdCounter++).toString(),
+        companyName: normalized.companyName,
+        contactName: normalized.contactName,
+        email: normalized.email,
+        phone: normalized.phone || '',
+        website: normalized.website || '',
+        country: normalized.country || '',
+        industry: normalized.industry || '',
+        employeeCount: normalized.employeeCount ? Number(normalized.employeeCount) : undefined,
+        position: normalized.position || '',
+        department: normalized.department || '',
+        notes: normalized.notes || '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
+      return { isValid: true, errors: [], customer };
+    }
+    
+    return { isValid: false, errors };
+  } catch (error) {
+    errors.push({ row: rowIndex, field: 'general', message: '数据格式错误' });
+    return { isValid: false, errors };
+  }
+}
+
+export default async function customersRoutes(fastify: FastifyInstance) {
+  
+  // 获取客户列表
+  fastify.get('/api/customers', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { page = 1, limit = 20, search = '', industry = '', country = '' } = request.query as any;
+      
+      let filteredCustomers = customers;
+      
+      // 搜索过滤
+      if (search) {
+        const searchLower = search.toLowerCase();
+        filteredCustomers = filteredCustomers.filter(customer =>
+          customer.companyName.toLowerCase().includes(searchLower) ||
+          customer.contactName.toLowerCase().includes(searchLower) ||
+          customer.email.toLowerCase().includes(searchLower)
+        );
+      }
+      
+      // 行业过滤
+      if (industry) {
+        filteredCustomers = filteredCustomers.filter(customer =>
+          customer.industry?.toLowerCase().includes(industry.toLowerCase())
+        );
+      }
+      
+      // 国家过滤
+      if (country) {
+        filteredCustomers = filteredCustomers.filter(customer =>
+          customer.country?.toLowerCase().includes(country.toLowerCase())
+        );
+      }
+      
+      // 分页
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
+      
+      return {
+        success: true,
+        data: paginatedCustomers,
+        pagination: {
+          current: page,
+          pageSize: limit,
+          total: filteredCustomers.length,
+          totalPages: Math.ceil(filteredCustomers.length / limit),
+        },
+        summary: {
+          totalCustomers: customers.length,
+          filteredCustomers: filteredCustomers.length,
+        },
+      };
+    } catch (error) {
+      console.error('获取客户列表错误:', error);
+      return reply.status(500).send({
+        error: '获取客户列表失败',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+  
+  // 获取单个客户详情
+  fastify.get('/api/customers/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      
+      const customer = customers.find(c => c.id === id);
+      if (!customer) {
+        return reply.status(404).send({
+          error: '客户不存在',
+          message: `未找到ID为 ${id} 的客户`,
+        });
+      }
+      
+      return {
+        success: true,
+        data: customer,
+      };
+    } catch (error) {
+      console.error('获取客户详情错误:', error);
+      return reply.status(500).send({
+        error: '获取客户详情失败',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+  
+  // 创建客户
+  fastify.post('/api/customers', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const customerData = createCustomerSchema.parse(request.body);
+      
+      // 检查邮箱是否已存在
+      const existingCustomer = customers.find(c => c.email === customerData.email);
+      if (existingCustomer) {
+        return reply.status(409).send({
+          error: '邮箱已存在',
+          message: '该邮箱地址已被其他客户使用',
+        });
+      }
+      
+      const customer: Customer = {
+        id: (customerIdCounter++).toString(),
+        ...customerData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
+      customers.push(customer);
+      
+      return {
+        success: true,
+        data: customer,
+        message: '客户创建成功',
+      };
+    } catch (error) {
+      console.error('创建客户错误:', error);
+      
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: '数据验证失败',
+          details: error.errors,
+        });
+      }
+      
+      return reply.status(500).send({
+        error: '创建客户失败',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+  
+  // 更新客户
+  fastify.put('/api/customers/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const updateData = updateCustomerSchema.parse(request.body);
+      
+      const customerIndex = customers.findIndex(c => c.id === id);
+      if (customerIndex === -1) {
+        return reply.status(404).send({
+          error: '客户不存在',
+          message: `未找到ID为 ${id} 的客户`,
+        });
+      }
+      
+      // 如果更新邮箱，检查是否与其他客户重复
+      if (updateData.email) {
+        const existingCustomer = customers.find(c => c.email === updateData.email && c.id !== id);
+        if (existingCustomer) {
+          return reply.status(409).send({
+            error: '邮箱已存在',
+            message: '该邮箱地址已被其他客户使用',
+          });
+        }
+      }
+      
+      customers[customerIndex] = {
+        ...customers[customerIndex],
+        ...updateData,
+        updatedAt: new Date().toISOString(),
+      };
+      
+      return {
+        success: true,
+        data: customers[customerIndex],
+        message: '客户更新成功',
+      };
+    } catch (error) {
+      console.error('更新客户错误:', error);
+      
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: '数据验证失败',
+          details: error.errors,
+        });
+      }
+      
+      return reply.status(500).send({
+        error: '更新客户失败',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+  
+  // 删除客户
+  fastify.delete('/api/customers/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      
+      const customerIndex = customers.findIndex(c => c.id === id);
+      if (customerIndex === -1) {
+        return reply.status(404).send({
+          error: '客户不存在',
+          message: `未找到ID为 ${id} 的客户`,
+        });
+      }
+      
+      customers.splice(customerIndex, 1);
+      
+      return {
+        success: true,
+        message: '客户删除成功',
+      };
+    } catch (error) {
+      console.error('删除客户错误:', error);
+      return reply.status(500).send({
+        error: '删除客户失败',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+  
+  // 批量上传客户数据
+  fastify.post('/api/customers/upload', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      console.log('收到文件上传请求');
+      
+      // 获取上传的文件
+      const data = await request.file();
+      if (!data) {
+        return reply.status(400).send({
+          error: '没有找到上传文件',
+          message: '请选择要上传的文件',
+        });
+      }
+      
+      console.log(`上传文件: ${data.filename}, 类型: ${data.mimetype}`);
+      
+      // 读取文件内容
+      const buffer = await data.toBuffer();
+      let rawData: any[] = [];
+      
+      // 根据文件类型解析数据
+      if (data.mimetype === 'text/csv' || data.filename.endsWith('.csv')) {
+        rawData = await parseCSV(buffer);
+      } else if (
+        data.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        data.mimetype === 'application/vnd.ms-excel' ||
+        data.filename.endsWith('.xlsx') ||
+        data.filename.endsWith('.xls')
+      ) {
+        rawData = parseExcel(buffer);
+      } else {
+        return reply.status(400).send({
+          error: '不支持的文件格式',
+          message: '请上传 CSV 或 Excel 文件',
+        });
+      }
+      
+      console.log(`解析到 ${rawData.length} 行数据`);
+      
+      if (rawData.length === 0) {
+        return reply.status(400).send({
+          error: '文件为空',
+          message: '上传的文件没有包含任何数据',
+        });
+      }
+      
+      // 验证和处理数据
+      const result: BatchUploadResult = {
+        total: rawData.length,
+        success: 0,
+        failed: 0,
+        errors: [],
+        customers: [],
+      };
+      
+      const successCustomers: Customer[] = [];
+      
+      for (let i = 0; i < rawData.length; i++) {
+        const row = rawData[i];
+        const validation = validateCustomerData(row, i + 1);
+        
+        if (validation.isValid && validation.customer) {
+          // 检查邮箱是否已存在
+          const existingCustomer = customers.find(c => c.email === validation.customer!.email);
+          if (existingCustomer) {
+            result.errors.push({
+              row: i + 1,
+              field: 'email',
+              message: '邮箱已存在',
+            });
+            result.failed++;
+          } else {
+            successCustomers.push(validation.customer);
+            result.success++;
+          }
+        } else {
+          result.errors.push(...validation.errors);
+          result.failed++;
+        }
+      }
+      
+      // 批量添加成功的客户
+      customers.push(...successCustomers);
+      result.customers = successCustomers;
+      
+      console.log(`上传完成: 成功 ${result.success}, 失败 ${result.failed}`);
+      
+      return {
+        success: true,
+        data: result,
+        message: `文件上传完成，成功导入 ${result.success} 条记录，${result.failed} 条记录失败`,
+      };
+    } catch (error) {
+      console.error('文件上传错误:', error);
+      return reply.status(500).send({
+        error: '文件上传失败',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+  
+  // 获取客户统计信息
+  fastify.get('/api/customers/stats', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const stats = {
+        totalCustomers: customers.length,
+        byIndustry: {} as Record<string, number>,
+        byCountry: {} as Record<string, number>,
+        recentlyAdded: customers.filter(c => {
+          const createdAt = new Date(c.createdAt);
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          return createdAt > weekAgo;
+        }).length,
+      };
+      
+      // 统计行业分布
+      customers.forEach(customer => {
+        const industry = customer.industry || '未分类';
+        stats.byIndustry[industry] = (stats.byIndustry[industry] || 0) + 1;
+      });
+      
+      // 统计国家分布
+      customers.forEach(customer => {
+        const country = customer.country || '未知';
+        stats.byCountry[country] = (stats.byCountry[country] || 0) + 1;
+      });
+      
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      console.error('获取统计信息错误:', error);
+      return reply.status(500).send({
+        error: '获取统计信息失败',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+  
+  // 清空客户数据（开发用）
+  fastify.delete('/api/customers/clear', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      customers = [];
+      customerIdCounter = 1;
+      
+      return {
+        success: true,
+        message: '所有客户数据已清空',
+      };
+    } catch (error) {
+      console.error('清空客户数据错误:', error);
+      return reply.status(500).send({
+        error: '清空客户数据失败',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+}

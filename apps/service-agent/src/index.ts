@@ -1,9 +1,11 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import agentRoutes from './routes/agent.js';
 import crawlerRoutes from './routes/crawler.js';
 import aiAnalysisRoutes from './routes/ai-analysis.js';
+import customersRoutes from './routes/customers.js';
 
 const fastify = Fastify({
   logger: {
@@ -34,10 +36,18 @@ async function start() {
       allowedHeaders: ['Content-Type', 'Authorization'],
     });
 
+    // 注册文件上传支持
+    await fastify.register(multipart, {
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
+    });
+
     // 注册路由
     await fastify.register(agentRoutes);
     await fastify.register(crawlerRoutes);
     await fastify.register(aiAnalysisRoutes);
+    await fastify.register(customersRoutes);
 
     // 根路径健康检查
     fastify.get('/', async (request, reply) => {
@@ -59,6 +69,9 @@ async function start() {
           analyzeUrl: '/api/ai-analysis/analyze-url',
           analyzeBatch: '/api/ai-analysis/analyze-urls',
           searchAndAnalyze: '/api/ai-analysis/search-and-analyze',
+          customers: '/api/customers',
+          customersUpload: '/api/customers/upload',
+          customersStats: '/api/customers/stats',
         },
       };
     });
@@ -77,6 +90,8 @@ async function start() {
     console.log(`🕷️  Crawler API: http://${host}:${port}/api/crawler/status`);
     console.log(`🧠 AI Analysis: http://${host}:${port}/api/ai-analysis/status`);
     console.log(`🔍 Smart Search: http://${host}:${port}/api/ai-analysis/search-and-analyze`);
+    console.log(`👥 Customers API: http://${host}:${port}/api/customers`);
+    console.log(`📤 File Upload: http://${host}:${port}/api/customers/upload`);
     console.log(`📝 API Key Status: ${process.env.DASHSCOPE_API_KEY ? 'Configured ✅' : 'Missing ❌'}`);
     console.log(`🌐 Google API Status: ${process.env.GOOGLE_API_KEY ? 'Configured ✅' : 'Missing ❌'}`);
     console.log(`🔍 Debug - Google API Key exists: ${!!process.env.GOOGLE_API_KEY}`);

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API调试测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 API调试测试页面</h1>
+    
+    <div>
+        <button onclick="testHealth()">测试健康检查</button>
+        <button onclick="testGetCustomers()">测试获取客户列表</button>
+        <button onclick="testCreateCustomer()">测试创建客户</button>
+        <button onclick="testCrawler()">测试爬虫搜索</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev';
+        
+        function addResult(title, content, isError = false) {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${isError ? 'error' : 'success'}`;
+            resultDiv.innerHTML = `<strong>${title}</strong>\n${content}`;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        async function testHealth() {
+            try {
+                console.log('Testing health endpoint...');
+                const response = await fetch(`${API_BASE}/api/agent/health`);
+                const data = await response.text();
+                
+                addResult('健康检查结果', `
+状态码: ${response.status}
+响应头: ${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}
+响应体: ${data}`, false);
+            } catch (error) {
+                addResult('健康检查失败', `错误: ${error.message}`, true);
+            }
+        }
+
+        async function testGetCustomers() {
+            try {
+                console.log('Testing get customers...');
+                const response = await fetch(`${API_BASE}/api/customers`);
+                const data = await response.text();
+                
+                addResult('获取客户列表结果', `
+状态码: ${response.status}
+响应头: ${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}
+响应体: ${data}`, false);
+            } catch (error) {
+                addResult('获取客户列表失败', `错误: ${error.message}`, true);
+            }
+        }
+
+        async function testCreateCustomer() {
+            try {
+                console.log('Testing create customer...');
+                
+                const customerData = {
+                    companyName: 'Test Company Debug',
+                    contactName: 'Test Contact',
+                    email: 'test@debug.com',
+                    country: 'Test Country',
+                    industry: 'Test Industry',
+                    notes: 'Debug test customer'
+                };
+
+                console.log('Sending data:', customerData);
+                
+                const response = await fetch(`${API_BASE}/api/customers`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(customerData)
+                });
+                
+                const data = await response.text();
+                
+                addResult('创建客户结果', `
+状态码: ${response.status}
+请求数据: ${JSON.stringify(customerData, null, 2)}
+响应头: ${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}
+响应体: ${data}`, !response.ok);
+            } catch (error) {
+                addResult('创建客户失败', `错误: ${error.message}\n堆栈: ${error.stack}`, true);
+            }
+        }
+
+        async function testCrawler() {
+            try {
+                console.log('Testing crawler...');
+                
+                const crawlerData = {
+                    keywords: ['test company'],
+                    maxResults: 3
+                };
+                
+                const response = await fetch(`${API_BASE}/api/crawler/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(crawlerData)
+                });
+                
+                const data = await response.text();
+                
+                addResult('爬虫搜索结果', `
+状态码: ${response.status}
+请求数据: ${JSON.stringify(crawlerData, null, 2)}
+响应头: ${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}
+响应体: ${data.substring(0, 1000)}...`, !response.ok);
+            } catch (error) {
+                addResult('爬虫搜索失败', `错误: ${error.message}\n堆栈: ${error.stack}`, true);
+            }
+        }
+
+        // 页面加载时自动测试连接
+        window.addEventListener('load', () => {
+            addResult('页面信息', `
+当前页面URL: ${window.location.href}
+API基础URL: ${API_BASE}
+用户代理: ${navigator.userAgent}`, false);
+        });
+    </script>
+</body>
+</html>

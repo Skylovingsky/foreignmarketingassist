@@ -3,6 +3,8 @@ import { z } from 'zod';
 import * as XLSX from 'xlsx';
 import csvParser from 'csv-parser';
 import { Readable } from 'stream';
+import { WebCrawlerService } from '../lib/crawler.js';
+import { AIAnalyzerService, AnalysisConfig } from '../lib/ai-analyzer.js';
 
 // 客户数据类型定义
 interface Customer {
@@ -18,6 +20,37 @@ interface Customer {
   position?: string;
   department?: string;
   notes?: string;
+  transactionCount?: number;
+  transactionAmount?: number;
+  status?: 'NEW' | 'CRAWLED' | 'ANALYZED';
+  leadScore?: number;
+  crawledUrls?: Array<{
+    url: string;
+    title: string;
+    content: string;
+    emails: string[];
+    phones: string[];
+    keywords: string[];
+  }>;
+  contacts?: Array<{
+    name: string;
+    title: string;
+    email: string;
+    phone: string;
+    confidence: number;
+    source: string;
+    type: 'personal' | 'generic';
+  }>;
+  scoreBreakdown?: {
+    personalEmail: number;
+    directPhone: number;
+    procurementConfidence: number;
+    productSimilarity: number;
+    siteFreshness: number;
+    belongingConfidence: number;
+  };
+  analysis?: string;
+  lastAnalyzed?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,41 +119,52 @@ function parseExcel(buffer: Buffer): any[] {
 
 // 标准化字段名映射
 const fieldMapping: Record<string, string> = {
+  // 中文字段映射
+  '采购商': 'companyName',
   '公司名称': 'companyName',
+  '目的国/地区': 'country',
+  '国家': 'country',
+  '地区': 'country',
+  '交易次数': 'transactionCount',
+  '交易金额': 'transactionAmount',
+  '联系人': 'contactName',
+  '邮箱': 'email',
+  '电话': 'phone',
+  '网站': 'website',
+  '行业': 'industry',
+  '员工数': 'employeeCount',
+  '职位': 'position',
+  '部门': 'department',
+  '备注': 'notes',
+  
+  // 英文字段映射
   'company': 'companyName',
   'companyname': 'companyName',
-  '联系人': 'contactName',
+  'company name': 'companyName',
   'contact': 'contactName',
   'contactname': 'contactName',
+  'contact name': 'contactName',
   'name': 'contactName',
-  '邮箱': 'email',
   'email': 'email',
   'mail': 'email',
-  '电话': 'phone',
   'phone': 'phone',
   'tel': 'phone',
   'telephone': 'phone',
-  '网站': 'website',
   'website': 'website',
   'url': 'website',
   'site': 'website',
-  '国家': 'country',
   'country': 'country',
   'nation': 'country',
-  '行业': 'industry',
+  'location': 'country',
   'industry': 'industry',
   'sector': 'industry',
-  '员工数': 'employeeCount',
   'employees': 'employeeCount',
   'employeecount': 'employeeCount',
   'staff': 'employeeCount',
-  '职位': 'position',
   'position': 'position',
   'title': 'position',
-  '部门': 'department',
   'department': 'department',
   'dept': 'department',
-  '备注': 'notes',
   'notes': 'notes',
   'note': 'notes',
   'remark': 'notes',
@@ -148,15 +192,20 @@ function validateCustomerData(data: any, rowIndex: number): { isValid: boolean; 
   try {
     const normalized = normalizeRowData(data);
     
-    // 必填字段检查
+    // 必填字段检查 - 只有公司名称是必需的
     if (!normalized.companyName) {
       errors.push({ row: rowIndex, field: 'companyName', message: '公司名称不能为空' });
     }
+    
+    // 如果没有联系人，使用默认值
     if (!normalized.contactName) {
-      errors.push({ row: rowIndex, field: 'contactName', message: '联系人不能为空' });
+      normalized.contactName = 'Unknown Contact';
     }
+    
+    // 如果没有邮箱，生成一个默认值
     if (!normalized.email) {
-      errors.push({ row: rowIndex, field: 'email', message: '邮箱不能为空' });
+      const companySlug = normalized.companyName ? normalized.companyName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'unknown';
+      normalized.email = `contact@${companySlug}.com`;
     }
     
     // 邮箱格式验证
@@ -192,6 +241,9 @@ function validateCustomerData(data: any, rowIndex: number): { isValid: boolean; 
         position: normalized.position || '',
         department: normalized.department || '',
         notes: normalized.notes || '',
+        transactionCount: normalized.transactionCount ? Number(normalized.transactionCount) : undefined,
+        transactionAmount: normalized.transactionAmount ? Number(normalized.transactionAmount) : undefined,
+        status: 'NEW',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -310,6 +362,7 @@ export default async function customersRoutes(fastify: FastifyInstance) {
       const customer: Customer = {
         id: (customerIdCounter++).toString(),
         ...customerData,
+        status: 'NEW',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -574,6 +627,118 @@ export default async function customersRoutes(fastify: FastifyInstance) {
       console.error('清空客户数据错误:', error);
       return reply.status(500).send({
         error: '清空客户数据失败',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // 分析客户（爬取网站 + AI 分析）
+  fastify.post('/api/customers/:id/analyze', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      
+      const customer = customers.find(c => c.id === id);
+      if (!customer) {
+        return reply.status(404).send({
+          error: '客户不存在',
+          message: `未找到ID为 ${id} 的客户`,
+        });
+      }
+
+      if (!customer.website) {
+        return reply.status(400).send({
+          error: '无法分析',
+          message: '该客户没有网站信息，无法进行爬取和分析',
+        });
+      }
+
+      console.log(`开始分析客户: ${customer.companyName} - ${customer.website}`);
+
+      // 1. 爬取网站数据
+      const crawler = new WebCrawlerService({
+        googleApiKey: process.env.GOOGLE_API_KEY,
+        googleSearchEngineId: process.env.GOOGLE_SEARCH_ENGINE_ID,
+      });
+
+      const crawlResult = await crawler.crawlCompanyWebsite(customer.website);
+      
+      if (crawlResult.error) {
+        console.error('网站爬取失败:', crawlResult.error);
+        return reply.status(400).send({
+          error: '网站爬取失败',
+          message: crawlResult.error,
+        });
+      }
+
+      // 2. 进行AI分析
+      const aiAnalyzer = new AIAnalyzerService();
+      const businessContext = {
+        companyName: "外贸代理公司",
+        industry: "外贸服务",
+        services: ["外贸代理", "采购代理", "出口服务", "贸易咨询"],
+        targetMarkets: ["全球市场", "欧美市场", "亚洲市场"],
+        uniqueValueProposition: "专业外贸代理服务，帮助企业拓展国际市场"
+      };
+
+      const analysisConfig: AnalysisConfig = {
+        businessContext,
+        analysisDepth: 'detailed',
+        language: 'zh',
+      };
+
+      const analysis = await aiAnalyzer.analyzeCompany(crawlResult, analysisConfig);
+
+      // 3. 更新客户数据
+      const customerIndex = customers.findIndex(c => c.id === id);
+      if (customerIndex !== -1) {
+        customers[customerIndex] = {
+          ...customers[customerIndex],
+          status: 'ANALYZED',
+          leadScore: analysis.overallScore,
+          crawledUrls: [{
+            url: customer.website,
+            title: crawlResult.companyName || customer.companyName,
+            content: crawlResult.description || '',
+            emails: crawlResult.contactEmails || [],
+            phones: crawlResult.phones || [],
+            keywords: []
+          }],
+          contacts: (crawlResult.contactEmails || []).map((email: string, idx: number) => ({
+            name: `联系人 ${idx + 1}`,
+            title: '未知',
+            email: email,
+            phone: (crawlResult.phones || [])[idx] || '',
+            confidence: 0.8,
+            source: 'website',
+            type: email.includes('info@') || email.includes('contact@') ? 'generic' as const : 'personal' as const
+          })),
+          scoreBreakdown: {
+            personalEmail: analysis.dimensions?.contactability?.score || 0,
+            directPhone: analysis.dimensions?.contactability?.score || 0,
+            procurementConfidence: analysis.dimensions?.businessMatching?.score || 0,
+            productSimilarity: analysis.dimensions?.businessMatching?.score || 0,
+            siteFreshness: analysis.dimensions?.marketPotential?.score || 0,
+            belongingConfidence: analysis.overallScore || 0,
+          },
+          analysis: analysis.recommendation,
+          lastAnalyzed: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      console.log(`客户分析完成: ${customer.companyName} - 评分: ${analysis.overallScore}`);
+
+      return {
+        success: true,
+        data: customers[customerIndex],
+        crawlResult,
+        analysis,
+        message: '客户分析完成',
+      };
+    } catch (error) {
+      console.error('客户分析错误:', error);
+      return reply.status(500).send({
+        error: '客户分析失败',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

@@ -28,8 +28,8 @@
 ### 1️⃣ 克隆项目
 
 ```bash
-+ git clone https://github.com/Skylovingsky/foreignmarketingassist.git
-+ cd foreignmarketingassist
+ git clone https://github.com/Skylovingsky/foreignmarketingassist.git
+ cd foreignmarketingassist
 ```
 
 ### 2️⃣ 安装依赖
@@ -566,3 +566,4 @@ chore: 构建工具或辅助工具的变动
 
 
 **🎯 项目愿景**: 构建最智能、最易用的外贸客户开发工具，让每个外贸人都能享受AI技术带来的效率提升。
+

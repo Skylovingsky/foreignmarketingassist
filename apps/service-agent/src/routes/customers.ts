@@ -661,17 +661,38 @@ export default async function customersRoutes(fastify: FastifyInstance) {
         });
 
         try {
+          // 优化搜索策略：使用更精确的关键词
+          const companyKeywords = [
+            customer.companyName,
+            // 去除常见后缀，提高搜索准确性
+            customer.companyName.replace(/\s+(LIMITED|LTD|PRIVATE|PVT|CORPORATION|CORP|INC|INCORPORATED|LLC|CO|COMPANY|GROUP|ENTERPRISE|SOLUTIONS|SERVICES|SYSTEMS)$/gi, '').trim()
+          ].filter(keyword => keyword.length > 3); // 过滤太短的关键词
+
           const searchQuery = {
-            keywords: [customer.companyName],
+            keywords: companyKeywords.slice(0, 2), // 最多使用2个关键词
             location: customer.country,
-            maxResults: 3
+            maxResults: 5 // 增加搜索结果数量
           };
           
           const searchResults = await crawler.searchAndCrawlCompanies(searchQuery);
           
-          if (searchResults.length > 0 && !searchResults[0].error) {
-            websiteToAnalyze = searchResults[0].website;
-            console.log(`找到网站: ${websiteToAnalyze}`);
+          // 过滤出真正的公司网站（排除PDF、政府网站等）
+          const validWebsites = searchResults.filter(result => 
+            !result.error && 
+            result.website &&
+            !result.website.includes('.pdf') &&
+            !result.website.includes('.doc') &&
+            !result.website.includes('scribd.com') &&
+            !result.website.includes('gov.') &&
+            !result.website.includes('wikipedia.org') &&
+            !result.website.includes('linkedin.com') &&
+            !result.website.includes('facebook.com') &&
+            result.score.overall >= 50 // 只选择评分较高的结果
+          );
+
+          if (validWebsites.length > 0) {
+            websiteToAnalyze = validWebsites[0].website;
+            console.log(`找到有效网站: ${websiteToAnalyze}`);
             
             // 更新客户的网站信息
             if (customerIndex !== -1) {
@@ -679,14 +700,37 @@ export default async function customersRoutes(fastify: FastifyInstance) {
             }
           } else {
             return reply.status(400).send({
-              error: '无法分析',
-              message: `该客户没有网站信息，且无法通过搜索找到相关网站。搜索关键词: "${customer.companyName} ${customer.country}"`,
+              error: '无法自动分析',
+              message: `系统无法为 "${customer.companyName}" 找到有效的公司官方网站。请考虑：
+              
+1. 手动添加网站URL后重新分析
+2. 检查公司名称拼写是否正确
+3. 该公司可能没有官方网站
+
+搜索尝试的关键词: "${companyKeywords.join('", "')}"`,
+              suggestions: {
+                manualInput: true,
+                searchKeywords: companyKeywords,
+                foundResults: searchResults.length,
+                validResults: validWebsites.length
+              }
             });
           }
         } catch (searchError) {
+          console.error('搜索错误:', searchError);
           return reply.status(400).send({
-            error: '无法分析',
-            message: '该客户没有网站信息，且搜索功能当前不可用',
+            error: '搜索服务异常',
+            message: `无法为 "${customer.companyName}" 进行网站搜索。可能原因：
+
+1. 搜索服务暂时不可用
+2. API配额已用完
+3. 网络连接问题
+
+建议：请稍后重试，或手动添加公司网站URL`,
+            suggestions: {
+              manualInput: true,
+              retryLater: true
+            }
           });
         }
       }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, ExternalLink, RefreshCw, MessageSquare, Download } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RefreshCw, MessageSquare, Download, Edit, Globe } from 'lucide-react'
 import Navigation from '@/components/layout/Navigation'
 import StatusPill from '@/components/common/StatusPill'
 import LeadScore from '@/components/common/LeadScore'
@@ -65,6 +65,8 @@ export default function CompanyDetailPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('evidence')
   const [refreshing, setRefreshing] = useState(false)
+  const [showWebsiteInput, setShowWebsiteInput] = useState(false)
+  const [websiteUrl, setWebsiteUrl] = useState('')
 
   useEffect(() => {
     if (params.id) {
@@ -122,6 +124,39 @@ export default function CompanyDetailPage() {
   const handleStartOutreach = () => {
     if (!company) return
     router.push(`/outreach?companyId=${company.id}`)
+  }
+
+  const handleUpdateWebsite = async () => {
+    if (!company || !websiteUrl.trim()) return
+
+    try {
+      const API_BASE = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev'
+      const response = await fetch(`${API_BASE}/api/customers/${company.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          website: websiteUrl.trim()
+        })
+      })
+
+      const result = await response.json()
+
+      if (response.ok && result.success) {
+        // 刷新公司数据
+        await fetchCompanyDetails(company.id)
+        setShowWebsiteInput(false)
+        setWebsiteUrl('')
+        alert('网站地址已更新成功')
+      } else {
+        console.error('Failed to update website:', result.error)
+        alert('更新网站地址失败')
+      }
+    } catch (error) {
+      console.error('Error updating website:', error)
+      alert('更新网站地址时发生错误')
+    }
   }
 
   if (loading) {
@@ -190,27 +225,51 @@ export default function CompanyDetailPage() {
               </div>
               
               <div className="flex items-center space-x-6 text-sm text-gray-600">
-                <span>{company.country}</span>
+                <span className="flex items-center">
+                  <Globe className="w-4 h-4 mr-1" />
+                  {company.country}
+                </span>
                 {company.industry && (
                   <>
                     <span>•</span>
                     <span>{company.industry}</span>
                   </>
                 )}
-                {company.website && (
-                  <>
-                    <span>•</span>
-                    <a
-                      href={company.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center text-indigo-600 hover:text-indigo-700"
+                <div className="flex items-center">
+                  <span>•</span>
+                  {company.website ? (
+                    <div className="flex items-center space-x-2 ml-2">
+                      <a
+                        href={company.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center text-indigo-600 hover:text-indigo-700"
+                      >
+                        网站
+                        <ExternalLink className="w-3 h-3 ml-1" />
+                      </a>
+                      <button
+                        onClick={() => {
+                          setWebsiteUrl(company.website || '')
+                          setShowWebsiteInput(true)
+                        }}
+                        className="text-gray-400 hover:text-gray-600"
+                        title="编辑网站"
+                      >
+                        <Edit className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowWebsiteInput(true)}
+                      className="ml-2 text-gray-400 hover:text-indigo-600 flex items-center"
+                      title="添加网站"
                     >
-                      Website
-                      <ExternalLink className="w-3 h-3 ml-1" />
-                    </a>
-                  </>
-                )}
+                      <span className="text-xs">无网站</span>
+                      <Edit className="w-3 h-3 ml-1" />
+                    </button>
+                  )}
+                </div>
               </div>
               
               {company.leadScore !== undefined && (
@@ -330,6 +389,66 @@ export default function CompanyDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Website Input Modal */}
+      {showWebsiteInput && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {company?.website ? '编辑网站地址' : '添加网站地址'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowWebsiteInput(false)
+                    setWebsiteUrl('')
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  网站URL
+                </label>
+                <input
+                  type="url"
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  autoFocus
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  请输入完整的网站地址，包含 http:// 或 https://
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowWebsiteInput(false)
+                    setWebsiteUrl('')
+                  }}
+                  className="btn-secondary"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleUpdateWebsite}
+                  disabled={!websiteUrl.trim()}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  保存
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

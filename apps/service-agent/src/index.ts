@@ -29,11 +29,16 @@ async function start() {
     });
     
     await fastify.register(cors, {
-      origin: process.env.NODE_ENV === 'production' 
-        ? [/localhost:3000/, /127\.0\.0\.1:3000/] // 生产环境限制域名
-        : true, // 开发环境允许所有来源
+      origin: [
+        'http://localhost:3000',
+        'https://3000-ibr8pve55krqf22np4xrh-6532622b.e2b.dev',
+        /localhost:\d+/,
+        /127\.0\.0\.1:\d+/,
+        /.*\.e2b\.dev$/
+      ],
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: true,
     });
 
     // 注册文件上传支持

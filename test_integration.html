@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>前端后端集成测试</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .customer { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
+        .btn { background: #007bff; color: white; padding: 8px 16px; border: none; cursor: pointer; }
+        .btn:disabled { background: #ccc; }
+        .analysis { background: #f8f9fa; padding: 10px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 前端后端集成测试</h1>
+    
+    <div id="status">正在加载客户数据...</div>
+    
+    <div id="customers"></div>
+    
+    <script>
+        const API_BASE = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev';
+        
+        // 获取客户数据
+        async function loadCustomers() {
+            try {
+                console.log('🔄 开始获取客户数据...');
+                const response = await fetch(`${API_BASE}/api/customers`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('✅ 客户数据获取成功:', data);
+                
+                displayCustomers(data.data);
+                document.getElementById('status').innerHTML = `✅ 成功加载 ${data.data.length} 个客户`;
+            } catch (error) {
+                console.error('❌ 获取客户数据失败:', error);
+                document.getElementById('status').innerHTML = `❌ 错误: ${error.message}`;
+            }
+        }
+        
+        // 显示客户列表
+        function displayCustomers(customers) {
+            const container = document.getElementById('customers');
+            container.innerHTML = '';
+            
+            customers.forEach(customer => {
+                const div = document.createElement('div');
+                div.className = 'customer';
+                
+                div.innerHTML = `
+                    <h3>${customer.companyName}</h3>
+                    <p>👤 联系人: ${customer.contactName}</p>
+                    <p>📧 邮箱: ${customer.email}</p>
+                    <p>🌐 网站: <a href="${customer.website}" target="_blank">${customer.website}</a></p>
+                    <p>🏭 行业: ${customer.industry} | 🌍 国家: ${customer.country}</p>
+                    
+                    <button class="btn" onclick="analyzeCustomer('${customer.id}', '${customer.website}', this)">
+                        🤖 AI分析
+                    </button>
+                    
+                    <div id="analysis-${customer.id}" class="analysis" style="display: none;"></div>
+                `;
+                
+                container.appendChild(div);
+            });
+        }
+        
+        // AI分析功能
+        async function analyzeCustomer(customerId, website, button) {
+            try {
+                button.disabled = true;
+                button.innerHTML = '⏳ 分析中...';
+                
+                console.log(`🤖 开始AI分析: ${website}`);
+                
+                const response = await fetch(`${API_BASE}/api/ai-analysis/analyze-url`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        url: website,
+                        businessContext: {
+                            companyName: 'Global Trade Solutions',
+                            industry: 'International Trade Services',
+                            services: ['Export Services', 'Supply Chain Management'],
+                            targetMarkets: ['Europe', 'Asia', 'North America'],
+                            uniqueValueProposition: 'End-to-end international trade solutions'
+                        },
+                        analysisDepth: 'detailed',
+                        language: 'zh'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`AI分析失败: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                console.log('✅ AI分析完成:', result);
+                
+                if (result.success && result.data.analysis) {
+                    displayAnalysis(customerId, result.data.analysis);
+                    button.innerHTML = '✅ 分析完成';
+                } else {
+                    throw new Error('AI分析返回格式错误');
+                }
+                
+            } catch (error) {
+                console.error('❌ AI分析失败:', error);
+                button.innerHTML = '❌ 分析失败';
+                alert(`AI分析失败: ${error.message}`);
+            } finally {
+                button.disabled = false;
+            }
+        }
+        
+        // 显示AI分析结果
+        function displayAnalysis(customerId, analysis) {
+            const container = document.getElementById(`analysis-${customerId}`);
+            container.style.display = 'block';
+            
+            container.innerHTML = `
+                <h4>🎯 AI分析结果</h4>
+                <p><strong>综合评分:</strong> ${analysis.overallScore}/100</p>
+                <p><strong>优先级:</strong> ${analysis.priority}</p>
+                
+                <h5>📊 五维度评分:</h5>
+                <ul>
+                    <li>🎯 市场潜力: ${analysis.dimensions.marketPotential.score}/100</li>
+                    <li>🤝 业务匹配: ${analysis.dimensions.businessMatching.score}/100</li>
+                    <li>📞 可联系性: ${analysis.dimensions.contactability.score}/100</li>
+                    <li>⚡ 竞争优势: ${analysis.dimensions.competitiveAdvantage.score}/100</li>
+                    <li>⏰ 紧急程度: ${analysis.dimensions.urgencyLevel.score}/100</li>
+                </ul>
+                
+                <h5>💡 AI建议:</h5>
+                <p>${analysis.recommendation}</p>
+                
+                <h5>📧 邮件模板:</h5>
+                <p><strong>主题:</strong> ${analysis.outreachMessages.email.subject}</p>
+                <details>
+                    <summary>查看邮件内容</summary>
+                    <pre style="white-space: pre-wrap; font-size: 12px;">${analysis.outreachMessages.email.content}</pre>
+                </details>
+            `;
+        }
+        
+        // 页面加载时自动获取数据
+        window.onload = loadCustomers;
+    </script>
+</body>
+</html>

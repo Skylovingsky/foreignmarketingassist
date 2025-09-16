@@ -150,7 +150,13 @@ export class WebCrawlerService {
 
       const response = await fetch(searchUrl.toString());
       if (!response.ok) {
-        throw new Error(`Google搜索API错误: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`Google搜索API详细错误:`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        throw new Error(`Google搜索API错误: ${response.status} - ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -569,70 +575,45 @@ export class WebCrawlerService {
 
   /**
    * 构建高级搜索查询
+   * 简化查询以避免Google Custom Search API的400错误
    */
   private buildAdvancedSearchQuery(query: CompanySearchQuery): string {
     const searchParts: string[] = [];
     
-    // 核心关键词 - 使用引号确保精确匹配
+    // 核心关键词 - 使用简单的引号匹配
     if (query.keywords.length > 0) {
-      const keywordQuery = query.keywords.map(kw => `"${kw}"`).join(' OR ');
-      searchParts.push(`(${keywordQuery})`);
+      // 对于多个关键词，只使用第一个主要关键词
+      const mainKeyword = query.keywords[0];
+      searchParts.push(`"${mainKeyword}"`);
     }
     
-    // 行业相关搜索
-    if (query.industry) {
-      const industryTerms = [
-        `"${query.industry}"`,
-        `industry:"${query.industry}"`,
-        `sector:"${query.industry}"`,
-      ];
-      searchParts.push(`(${industryTerms.join(' OR ')})`);
-    }
+    // 添加通用公司标识词，但保持简单
+    searchParts.push('company OR corporation OR ltd OR inc OR llc');
     
-    // 地理位置
+    // 地理位置 - 如果提供的话，添加到搜索中
     if (query.location) {
-      const locationTerms = [
-        `"${query.location}"`,
-        `location:"${query.location}"`,
-        `based:"${query.location}"`,
-        `headquarters:"${query.location}"`,
-      ];
-      searchParts.push(`(${locationTerms.join(' OR ')})`);
+      searchParts.push(`"${query.location}"`);
     }
     
-    // 公司规模
-    if (query.size) {
-      const sizeTerms = [
-        `employees:"${query.size}"`,
-        `size:"${query.size}"`,
-        `staff:"${query.size}"`,
-      ];
-      searchParts.push(`(${sizeTerms.join(' OR ')})`);
+    // 行业信息 - 如果提供的话
+    if (query.industry) {
+      searchParts.push(`"${query.industry}"`);
     }
     
-    // 公司类型标识符 - 确保找到的是公司
-    const companyIdentifiers = [
-      'company', 'corporation', 'corp', 'ltd', 'limited', 
-      'inc', 'incorporated', 'llc', 'co', 'enterprise',
-      'group', 'holdings', 'solutions', 'services', 'systems',
-    ];
-    searchParts.push(`(${companyIdentifiers.join(' OR ')})`);
-    
-    // 排除不相关的站点
+    // 简单排除主要社交媒体站点
     const excludeSites = [
       '-site:linkedin.com',
-      '-site:facebook.com', 
-      '-site:twitter.com',
-      '-site:instagram.com',
-      '-site:youtube.com',
-      '-site:wikipedia.org',
-      '-site:crunchbase.com',
-      // '-site:glassdoor.com',  // 可能有用的公司信息
+      '-site:facebook.com',
+      '-site:twitter.com'
     ];
     
-    // 组合搜索查询
-    let finalQuery = searchParts.join(' AND ');
-    finalQuery += ' ' + excludeSites.join(' ');
+    // 组合搜索查询 - 使用空格分隔，让Google自然处理
+    let finalQuery = searchParts.join(' ');
+    
+    // 添加站点排除
+    if (excludeSites.length > 0) {
+      finalQuery += ' ' + excludeSites.join(' ');
+    }
     
     console.log(`🔍 构建的搜索查询: ${finalQuery}`);
     return finalQuery;

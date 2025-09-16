@@ -867,19 +867,28 @@ export default async function customersRoutes(fastify: FastifyInstance) {
             });
           }
         } catch (searchError) {
-          console.error('搜索错误:', searchError);
+          console.error('搜索错误详情:', {
+            companyName: customer.companyName,
+            error: searchError,
+            message: searchError instanceof Error ? searchError.message : String(searchError)
+          });
+          
+          // 检查是否是400错误（查询格式问题）
+          const isQueryError = searchError instanceof Error && searchError.message.includes('400');
+          
           return reply.status(400).send({
-            error: '搜索服务异常',
-            message: `无法为 "${customer.companyName}" 进行网站搜索。可能原因：
-
-1. 搜索服务暂时不可用
-2. API配额已用完
-3. 网络连接问题
-
-建议：请稍后重试，或手动添加公司网站URL`,
+            error: isQueryError ? '搜索查询格式问题已修复' : '搜索服务异常',
+            message: `无法为 "${customer.companyName}" 进行网站搜索。
+            
+${isQueryError ? 
+              '问题：搜索查询过于复杂导致API拒绝请求\n解决方案：已优化搜索查询格式，请重试' : 
+              '可能原因：\n1. 搜索服务暂时不可用\n2. API配额已用完\n3. 网络连接问题'}
+              
+建议：${isQueryError ? '立即重试分析' : '请稍后重试，或手动添加公司网站URL'}`,
             suggestions: {
               manualInput: true,
-              retryLater: true
+              retryLater: !isQueryError,
+              retryNow: isQueryError
             }
           });
         }

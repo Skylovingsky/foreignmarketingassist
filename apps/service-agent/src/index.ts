@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import agentRoutes from './routes/agent.js';
+import crawlerRoutes from './routes/crawler.js';
 
 const fastify = Fastify({
   logger: {
@@ -34,6 +35,7 @@ async function start() {
 
     // 注册路由
     await fastify.register(agentRoutes);
+    await fastify.register(crawlerRoutes);
 
     // 根路径健康检查
     fastify.get('/', async (request, reply) => {
@@ -47,6 +49,9 @@ async function start() {
           health: '/api/agent/health',
           chat: '/api/agent/chat',
           streamChat: '/api/agent/chat/stream',
+          crawler: '/api/crawler/status',
+          crawlSingle: '/api/crawler/single',
+          crawlBatch: '/api/crawler/batch',
         },
       };
     });
@@ -62,6 +67,7 @@ async function start() {
     console.log(`🏥 Health Check: http://${host}:${port}/api/agent/health`);
     console.log(`💬 Chat API: http://${host}:${port}/api/agent/chat`);
     console.log(`🌊 Stream Chat: http://${host}:${port}/api/agent/chat/stream`);
+    console.log(`🕷️  Crawler API: http://${host}:${port}/api/crawler/status`);
     console.log(`📝 API Key Status: ${process.env.DASHSCOPE_API_KEY ? 'Configured ✅' : 'Missing ❌'}\n`);
 
   } catch (error) {

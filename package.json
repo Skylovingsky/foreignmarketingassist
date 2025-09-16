@@ -40,6 +40,8 @@
     "pnpm": ">=8.0.0"
   },
   "dependencies": {
+    "@types/cheerio": "^0.22.35",
+    "cheerio": "^1.1.2",
     "pm2": "^6.0.11"
   }
 }

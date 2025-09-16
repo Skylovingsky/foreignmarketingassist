@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import agentRoutes from './routes/agent.js';
 import crawlerRoutes from './routes/crawler.js';
+import aiAnalysisRoutes from './routes/ai-analysis.js';
 
 const fastify = Fastify({
   logger: {
@@ -36,6 +37,7 @@ async function start() {
     // 注册路由
     await fastify.register(agentRoutes);
     await fastify.register(crawlerRoutes);
+    await fastify.register(aiAnalysisRoutes);
 
     // 根路径健康检查
     fastify.get('/', async (request, reply) => {
@@ -52,6 +54,11 @@ async function start() {
           crawler: '/api/crawler/status',
           crawlSingle: '/api/crawler/single',
           crawlBatch: '/api/crawler/batch',
+          crawlerSearch: '/api/crawler/search',
+          aiAnalysis: '/api/ai-analysis/status',
+          analyzeUrl: '/api/ai-analysis/analyze-url',
+          analyzeBatch: '/api/ai-analysis/analyze-urls',
+          searchAndAnalyze: '/api/ai-analysis/search-and-analyze',
         },
       };
     });
@@ -68,7 +75,10 @@ async function start() {
     console.log(`💬 Chat API: http://${host}:${port}/api/agent/chat`);
     console.log(`🌊 Stream Chat: http://${host}:${port}/api/agent/chat/stream`);
     console.log(`🕷️  Crawler API: http://${host}:${port}/api/crawler/status`);
-    console.log(`📝 API Key Status: ${process.env.DASHSCOPE_API_KEY ? 'Configured ✅' : 'Missing ❌'}\n`);
+    console.log(`🧠 AI Analysis: http://${host}:${port}/api/ai-analysis/status`);
+    console.log(`🔍 Smart Search: http://${host}:${port}/api/ai-analysis/search-and-analyze`);
+    console.log(`📝 API Key Status: ${process.env.DASHSCOPE_API_KEY ? 'Configured ✅' : 'Missing ❌'}`);
+    console.log(`🌐 Google API Status: ${process.env.GOOGLE_API_KEY ? 'Configured ✅' : 'Missing ❌'}\n`);
 
   } catch (error) {
     console.error('❌ Failed to start Agent API service:', error);

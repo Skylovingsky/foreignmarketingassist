@@ -78,7 +78,9 @@ async function start() {
     console.log(`🧠 AI Analysis: http://${host}:${port}/api/ai-analysis/status`);
     console.log(`🔍 Smart Search: http://${host}:${port}/api/ai-analysis/search-and-analyze`);
     console.log(`📝 API Key Status: ${process.env.DASHSCOPE_API_KEY ? 'Configured ✅' : 'Missing ❌'}`);
-    console.log(`🌐 Google API Status: ${process.env.GOOGLE_API_KEY ? 'Configured ✅' : 'Missing ❌'}\n`);
+    console.log(`🌐 Google API Status: ${process.env.GOOGLE_API_KEY ? 'Configured ✅' : 'Missing ❌'}`);
+    console.log(`🔍 Debug - Google API Key exists: ${!!process.env.GOOGLE_API_KEY}`);
+    console.log(`🔍 Debug - Google Search Engine ID exists: ${!!process.env.GOOGLE_SEARCH_ENGINE_ID}\n`);
 
   } catch (error) {
     console.error('❌ Failed to start Agent API service:', error);

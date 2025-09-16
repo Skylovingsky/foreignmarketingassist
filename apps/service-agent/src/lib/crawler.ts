@@ -13,6 +13,13 @@ export interface CrawlerConfig {
   respectRobots: boolean;
   googleApiKey?: string;
   googleSearchEngineId?: string;
+  // Google搜索优化参数
+  cseGl?: string;  // 地理位置
+  cseHl?: string;  // 界面语言
+  cseLr?: string;  // 搜索语言
+  cseCr?: string;  // 国家限制
+  cseDate?: string;  // 时间限制
+  cseMaxPerMin?: number;  // 每分钟最大请求数
 }
 
 export interface GoogleSearchResult {
@@ -64,6 +71,9 @@ export interface CompanySearchQuery {
 
 export class WebCrawlerService {
   private config: CrawlerConfig;
+  private lastRequestTime: number = 0;
+  private requestCount: number = 0;
+  private requestWindow: number = 60000; // 1分钟窗口
 
   constructor(config?: Partial<CrawlerConfig>) {
     this.config = {
@@ -73,8 +83,39 @@ export class WebCrawlerService {
       respectRobots: true,
       googleApiKey: process.env.GOOGLE_API_KEY,
       googleSearchEngineId: process.env.GOOGLE_SEARCH_ENGINE_ID,
+      // Google搜索优化配置
+      cseGl: process.env.CSE_GL,
+      cseHl: process.env.CSE_HL,
+      cseLr: process.env.CSE_LR,
+      cseCr: process.env.CSE_CR,
+      cseDate: process.env.CSE_DATE || 'm18',
+      cseMaxPerMin: parseInt(process.env.CSE_MAX_PER_MIN || '40', 10),
       ...config,
     };
+  }
+
+  /**
+   * 检查API请求频率限制
+   */
+  private async checkRateLimit(): Promise<void> {
+    const now = Date.now();
+    
+    // 重置计数器（每分钟）
+    if (now - this.lastRequestTime > this.requestWindow) {
+      this.requestCount = 0;
+      this.lastRequestTime = now;
+    }
+    
+    // 检查是否超过限制
+    if (this.requestCount >= (this.config.cseMaxPerMin || 40)) {
+      const waitTime = this.requestWindow - (now - this.lastRequestTime);
+      console.log(`⏳ API频率限制，等待 ${Math.ceil(waitTime/1000)} 秒...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      this.requestCount = 0;
+      this.lastRequestTime = Date.now();
+    }
+    
+    this.requestCount++;
   }
 
   /**
@@ -86,20 +127,24 @@ export class WebCrawlerService {
         throw new Error('Google API配置缺失');
       }
 
-      // 构建搜索查询
-      const searchTerms = [
-        ...query.keywords,
-        query.industry && `industry:"${query.industry}"`,
-        query.location && `location:"${query.location}"`,
-        query.size && `size:"${query.size}"`,
-        'company OR corporation OR ltd OR inc OR llc',
-      ].filter(Boolean).join(' ');
+      // 检查频率限制
+      await this.checkRateLimit();
+
+      // 构建精准搜索查询
+      const searchTerms = this.buildAdvancedSearchQuery(query);
 
       const searchUrl = new URL('https://www.googleapis.com/customsearch/v1');
       searchUrl.searchParams.set('key', this.config.googleApiKey!);
       searchUrl.searchParams.set('cx', this.config.googleSearchEngineId!);
       searchUrl.searchParams.set('q', searchTerms);
       searchUrl.searchParams.set('num', String(query.maxResults || 10));
+      
+      // 添加高级搜索参数
+      if (this.config.cseGl) searchUrl.searchParams.set('gl', this.config.cseGl);
+      if (this.config.cseHl) searchUrl.searchParams.set('hl', this.config.cseHl);
+      if (this.config.cseLr) searchUrl.searchParams.set('lr', this.config.cseLr);
+      if (this.config.cseCr) searchUrl.searchParams.set('cr', this.config.cseCr);
+      if (this.config.cseDate) searchUrl.searchParams.set('dateRestrict', this.config.cseDate);
 
       console.log(`执行Google搜索: ${searchTerms}`);
 
@@ -520,6 +565,77 @@ export class WebCrawlerService {
       content,
       technical,
     };
+  }
+
+  /**
+   * 构建高级搜索查询
+   */
+  private buildAdvancedSearchQuery(query: CompanySearchQuery): string {
+    const searchParts: string[] = [];
+    
+    // 核心关键词 - 使用引号确保精确匹配
+    if (query.keywords.length > 0) {
+      const keywordQuery = query.keywords.map(kw => `"${kw}"`).join(' OR ');
+      searchParts.push(`(${keywordQuery})`);
+    }
+    
+    // 行业相关搜索
+    if (query.industry) {
+      const industryTerms = [
+        `"${query.industry}"`,
+        `industry:"${query.industry}"`,
+        `sector:"${query.industry}"`,
+      ];
+      searchParts.push(`(${industryTerms.join(' OR ')})`);
+    }
+    
+    // 地理位置
+    if (query.location) {
+      const locationTerms = [
+        `"${query.location}"`,
+        `location:"${query.location}"`,
+        `based:"${query.location}"`,
+        `headquarters:"${query.location}"`,
+      ];
+      searchParts.push(`(${locationTerms.join(' OR ')})`);
+    }
+    
+    // 公司规模
+    if (query.size) {
+      const sizeTerms = [
+        `employees:"${query.size}"`,
+        `size:"${query.size}"`,
+        `staff:"${query.size}"`,
+      ];
+      searchParts.push(`(${sizeTerms.join(' OR ')})`);
+    }
+    
+    // 公司类型标识符 - 确保找到的是公司
+    const companyIdentifiers = [
+      'company', 'corporation', 'corp', 'ltd', 'limited', 
+      'inc', 'incorporated', 'llc', 'co', 'enterprise',
+      'group', 'holdings', 'solutions', 'services', 'systems',
+    ];
+    searchParts.push(`(${companyIdentifiers.join(' OR ')})`);
+    
+    // 排除不相关的站点
+    const excludeSites = [
+      '-site:linkedin.com',
+      '-site:facebook.com', 
+      '-site:twitter.com',
+      '-site:instagram.com',
+      '-site:youtube.com',
+      '-site:wikipedia.org',
+      '-site:crunchbase.com',
+      // '-site:glassdoor.com',  // 可能有用的公司信息
+    ];
+    
+    // 组合搜索查询
+    let finalQuery = searchParts.join(' AND ');
+    finalQuery += ' ' + excludeSites.join(' ');
+    
+    console.log(`🔍 构建的搜索查询: ${finalQuery}`);
+    return finalQuery;
   }
 
   /**

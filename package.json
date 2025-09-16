@@ -1,0 +1,42 @@
+{
+  "name": "foreign-trade-assistant",
+  "version": "1.0.0",
+  "description": "AI-powered foreign trade lead discovery and engagement platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "node scripts/dev.js",
+    "dev:turbo": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "infra:start": "node scripts/start-infrastructure.js",
+    "infra:stop": "node scripts/stop-infrastructure.js",
+    "infra:logs": "docker compose -f ops/docker-compose.yml logs -f",
+    "infra:status": "docker compose -f ops/docker-compose.yml ps"
+  },
+  "devDependencies": {
+    "@turbo/gen": "^1.10.12",
+    "turbo": "^1.10.12",
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2",
+    "eslint": "^8.48.0",
+    "@typescript-eslint/eslint-plugin": "^6.7.2",
+    "@typescript-eslint/parser": "^6.7.2"
+  },
+  "packageManager": "pnpm@8.6.12",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

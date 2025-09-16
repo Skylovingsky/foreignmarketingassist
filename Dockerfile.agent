@@ -1,0 +1,42 @@
+# Agent Service Dockerfile
+FROM node:18-alpine AS base
+
+# Install pnpm
+RUN corepack enable pnpm
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/service-agent/package.json ./apps/service-agent/
+COPY packages/dto/package.json ./packages/dto/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY packages/dto ./packages/dto
+COPY apps/service-agent ./apps/service-agent
+
+# Build packages
+RUN pnpm --filter @trade-assistant/dto build
+RUN pnpm --filter @trade-assistant/service-agent build
+
+# Production stage
+FROM node:18-alpine AS production
+
+RUN corepack enable pnpm
+
+WORKDIR /app
+
+# Copy built application
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/packages/dto/dist ./packages/dto/dist
+COPY --from=base /app/packages/dto/package.json ./packages/dto/
+COPY --from=base /app/apps/service-agent/dist ./apps/service-agent/dist
+COPY --from=base /app/apps/service-agent/package.json ./apps/service-agent/
+
+EXPOSE 3001
+
+CMD ["node", "apps/service-agent/dist/index.js"]

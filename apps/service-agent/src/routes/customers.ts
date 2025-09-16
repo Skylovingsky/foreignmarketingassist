@@ -645,14 +645,53 @@ export default async function customersRoutes(fastify: FastifyInstance) {
         });
       }
 
-      if (!customer.website) {
-        return reply.status(400).send({
-          error: '无法分析',
-          message: '该客户没有网站信息，无法进行爬取和分析',
+      // 获取客户索引，用于后续更新
+      const customerIndex = customers.findIndex(c => c.id === id);
+
+      // 如果没有网站，尝试根据公司名称和国家搜索网站
+      let websiteToAnalyze = customer.website;
+      
+      if (!websiteToAnalyze || websiteToAnalyze.trim() === '') {
+        console.log(`客户 ${customer.companyName} 没有网站信息，尝试智能搜索...`);
+        
+        // 使用Google搜索API查找公司网站
+        const crawler = new WebCrawlerService({
+          googleApiKey: process.env.GOOGLE_API_KEY,
+          googleSearchEngineId: process.env.GOOGLE_SEARCH_ENGINE_ID,
         });
+
+        try {
+          const searchQuery = {
+            keywords: [customer.companyName],
+            location: customer.country,
+            maxResults: 3
+          };
+          
+          const searchResults = await crawler.searchAndCrawlCompanies(searchQuery);
+          
+          if (searchResults.length > 0 && !searchResults[0].error) {
+            websiteToAnalyze = searchResults[0].website;
+            console.log(`找到网站: ${websiteToAnalyze}`);
+            
+            // 更新客户的网站信息
+            if (customerIndex !== -1) {
+              customers[customerIndex].website = websiteToAnalyze;
+            }
+          } else {
+            return reply.status(400).send({
+              error: '无法分析',
+              message: `该客户没有网站信息，且无法通过搜索找到相关网站。搜索关键词: "${customer.companyName} ${customer.country}"`,
+            });
+          }
+        } catch (searchError) {
+          return reply.status(400).send({
+            error: '无法分析',
+            message: '该客户没有网站信息，且搜索功能当前不可用',
+          });
+        }
       }
 
-      console.log(`开始分析客户: ${customer.companyName} - ${customer.website}`);
+      console.log(`开始分析客户: ${customer.companyName} - ${websiteToAnalyze}`);
 
       // 1. 爬取网站数据
       const crawler = new WebCrawlerService({
@@ -660,7 +699,7 @@ export default async function customersRoutes(fastify: FastifyInstance) {
         googleSearchEngineId: process.env.GOOGLE_SEARCH_ENGINE_ID,
       });
 
-      const crawlResult = await crawler.crawlCompanyWebsite(customer.website);
+      const crawlResult = await crawler.crawlCompanyWebsite(websiteToAnalyze);
       
       if (crawlResult.error) {
         console.error('网站爬取失败:', crawlResult.error);
@@ -689,14 +728,13 @@ export default async function customersRoutes(fastify: FastifyInstance) {
       const analysis = await aiAnalyzer.analyzeCompany(crawlResult, analysisConfig);
 
       // 3. 更新客户数据
-      const customerIndex = customers.findIndex(c => c.id === id);
       if (customerIndex !== -1) {
         customers[customerIndex] = {
           ...customers[customerIndex],
           status: 'ANALYZED',
           leadScore: analysis.overallScore,
           crawledUrls: [{
-            url: customer.website,
+            url: websiteToAnalyze,
             title: crawlResult.companyName || customer.companyName,
             content: crawlResult.description || '',
             emails: crawlResult.contactEmails || [],

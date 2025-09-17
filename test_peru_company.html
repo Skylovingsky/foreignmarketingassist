@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试秘鲁公司搜索</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test-section {
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .loading {
+            color: #007bff;
+            font-weight: bold;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .result {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            overflow-x: auto;
+            border-radius: 5px;
+        }
+        .company-card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: white;
+        }
+        .score {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 3px;
+            color: white;
+        }
+        .score.high { background-color: #28a745; }
+        .score.medium { background-color: #ffc107; color: black; }
+        .score.low { background-color: #dc3545; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 测试秘鲁公司搜索功能</h1>
+    
+    <div class="test-section">
+        <h2>测试公司: AUTOMATIZACION INDUSTRIAL XIOMARA S.A.C.</h2>
+        <p>国家: Peru (秘鲁)</p>
+        <p>这个公司之前导致Google Search API 400错误，现在测试修复后的效果</p>
+        
+        <button onclick="testPeruCompany()" id="testBtn">开始测试</button>
+        <button onclick="clearResults()" id="clearBtn">清空结果</button>
+        
+        <div id="status"></div>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001';
+        
+        async function testPeruCompany() {
+            const statusDiv = document.getElementById('status');
+            const resultsDiv = document.getElementById('results');
+            const testBtn = document.getElementById('testBtn');
+            
+            testBtn.disabled = true;
+            statusDiv.innerHTML = '<div class="loading">🔄 开始测试...</div>';
+            resultsDiv.innerHTML = '';
+            
+            try {
+                // 模拟创建公司数据
+                const companyData = {
+                    name: 'AUTOMATIZACION INDUSTRIAL XIOMARA S.A.C.',
+                    country: 'Peru',
+                    industry: 'Industrial Automation'
+                };
+                
+                statusDiv.innerHTML = '<div class="loading">📤 创建测试公司...</div>';
+                
+                // 1. 创建公司
+                const createResponse = await fetch(`${API_BASE}/api/customers`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(companyData)
+                });
+                
+                if (!createResponse.ok) {
+                    throw new Error(`创建公司失败: ${createResponse.status} ${createResponse.statusText}`);
+                }
+                
+                const createdCompany = await createResponse.json();
+                console.log('创建的公司:', createdCompany);
+                
+                statusDiv.innerHTML = '<div class="loading">🔍 开始分析公司 (可能需要30-60秒)...</div>';
+                
+                // 2. 分析公司
+                const analyzeResponse = await fetch(`${API_BASE}/api/customers/${createdCompany.id}/analyze`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                if (!analyzeResponse.ok) {
+                    const errorText = await analyzeResponse.text();
+                    console.error('分析响应错误:', errorText);
+                    throw new Error(`分析失败: ${analyzeResponse.status} ${analyzeResponse.statusText}\n${errorText}`);
+                }
+                
+                const analysisResult = await analyzeResponse.json();
+                console.log('分析结果:', analysisResult);
+                
+                // 显示结果
+                statusDiv.innerHTML = '<div class="success">✅ 测试完成!</div>';
+                displayResults(analysisResult);
+                
+            } catch (error) {
+                console.error('测试失败:', error);
+                statusDiv.innerHTML = `<div class="error">❌ 测试失败: ${error.message}</div>`;
+            } finally {
+                testBtn.disabled = false;
+            }
+        }
+        
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            
+            if (!data || !data.crawlResults || data.crawlResults.length === 0) {
+                resultsDiv.innerHTML = '<div class="error">❌ 没有找到任何搜索结果</div>';
+                return;
+            }
+            
+            let html = `
+                <div class="result">
+                    <h3>📊 分析结果总览</h3>
+                    <p><strong>找到网站数量:</strong> ${data.crawlResults.length}</p>
+                    <p><strong>分析时间:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+            `;
+            
+            // 显示每个找到的网站
+            data.crawlResults.forEach((site, index) => {
+                const scoreClass = site.score.overall >= 70 ? 'high' : site.score.overall >= 40 ? 'medium' : 'low';
+                
+                html += `
+                    <div class="company-card">
+                        <h4>${site.companyName || '未知公司'} <span class="score ${scoreClass}">${site.score.overall}分</span></h4>
+                        <p><strong>网站:</strong> <a href="${site.website}" target="_blank">${site.website}</a></p>
+                        <p><strong>描述:</strong> ${site.description || '无描述'}</p>
+                        <p><strong>搜索排名:</strong> #${site.searchRank || index + 1}</p>
+                        
+                        ${site.contactEmails.length > 0 ? `<p><strong>邮箱:</strong> ${site.contactEmails.join(', ')}</p>` : ''}
+                        ${site.phones.length > 0 ? `<p><strong>电话:</strong> ${site.phones.join(', ')}</p>` : ''}
+                        ${site.addresses.length > 0 ? `<p><strong>地址:</strong> ${site.addresses.join('; ')}</p>` : ''}
+                        
+                        <details>
+                            <summary>详细评分</summary>
+                            <div style="margin: 10px 0;">
+                                <div>相关性: ${site.score.relevance}/100</div>
+                                <div>可信度: ${site.score.credibility}/100</div>
+                                <div>联系方式: ${site.score.contact}/100</div>
+                                <div>内容质量: ${site.score.content}/100</div>
+                                <div>技术质量: ${site.score.technical}/100</div>
+                            </div>
+                        </details>
+                        
+                        ${site.error ? `<div class="error">错误: ${site.error}</div>` : ''}
+                    </div>
+                `;
+            });
+            
+            // 显示AI分析报告
+            if (data.analysis) {
+                html += `
+                    <div class="result">
+                        <h3>🤖 AI分析报告</h3>
+                        <pre>${JSON.stringify(data.analysis, null, 2)}</pre>
+                    </div>
+                `;
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('status').innerHTML = '';
+        }
+    </script>
+</body>
+</html>

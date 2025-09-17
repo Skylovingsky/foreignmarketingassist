@@ -6,6 +6,7 @@ import agentRoutes from './routes/agent.js';
 import crawlerRoutes from './routes/crawler.js';
 import aiAnalysisRoutes from './routes/ai-analysis.js';
 import customersRoutes from './routes/customers.js';
+import aiSearchRoutes from './routes/ai-search.js';
 
 const fastify = Fastify({
   logger: {
@@ -53,6 +54,7 @@ async function start() {
     await fastify.register(crawlerRoutes);
     await fastify.register(aiAnalysisRoutes);
     await fastify.register(customersRoutes);
+    await fastify.register(aiSearchRoutes);
 
     // 根路径健康检查
     fastify.get('/', async (request, reply) => {
@@ -77,6 +79,9 @@ async function start() {
           customers: '/api/customers',
           customersUpload: '/api/customers/upload',
           customersStats: '/api/customers/stats',
+          aiSearch: '/api/ai-search/status',
+          aiSearchAnalyze: '/api/ai-search/analyze-company',
+          aiSearchStream: '/api/ai-search/analyze-company/stream',
         },
       };
     });

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import type { AgentMessage } from '@trade-assistant/dto';
+import { sendChatMessage } from '@/lib/api';
 
 export default function AgentPage() {
   const [messages, setMessages] = useState<AgentMessage[]>([
@@ -41,7 +42,6 @@ export default function AgentPage() {
 
     try {
       // 使用API客户端发送消息
-      const { sendChatMessage } = await import('@/lib/api');
       const response = await sendChatMessage([...messages, userMessage], {
         useRag: useRAG,
         temperature: 0.7,

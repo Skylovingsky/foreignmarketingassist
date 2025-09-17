@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend-Backend Integration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .success { color: green; }
+        .error { color: red; }
+        .customer-card { border: 1px solid #ddd; padding: 10px; margin: 10px 0; }
+        .ai-analysis { background: #f5f5f5; padding: 10px; margin-top: 10px; }
+        button { padding: 5px 10px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Frontend-Backend Integration Test</h1>
+
+    <div class="test-section">
+        <h2>1. Backend Connection Test</h2>
+        <button onclick="testBackendConnection()">Test Backend Connection</button>
+        <div id="backend-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Customer Data Test</h2>
+        <button onclick="loadCustomers()">Load Customers</button>
+        <div id="customers-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. AI Analysis Test</h2>
+        <button onclick="testAIAnalysis()">Test AI Analysis (Ferrari)</button>
+        <div id="ai-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Customer Upload Test</h2>
+        <input type="file" id="fileInput" accept=".csv,.xlsx">
+        <button onclick="uploadFile()">Upload Customer File</button>
+        <div id="upload-result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev';
+        
+        async function testBackendConnection() {
+            const resultDiv = document.getElementById('backend-result');
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `<span class="success">✅ Backend connected: ${JSON.stringify(data)}</span>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Backend error: ${response.status}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Connection failed: ${error.message}</span>`;
+            }
+        }
+
+        async function loadCustomers() {
+            const resultDiv = document.getElementById('customers-result');
+            try {
+                const response = await fetch(`${API_BASE}/api/customers`);
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Customer data:', data);
+                    
+                    if (data.success && data.data.length > 0) {
+                        let html = `<div class="success">✅ Found ${data.data.length} customers:</div>`;
+                        data.data.forEach(customer => {
+                            html += `
+                                <div class="customer-card">
+                                    <h3>${customer.companyName}</h3>
+                                    <p>联系人: ${customer.contactName}</p>
+                                    <p>邮箱: ${customer.email}</p>
+                                    <p>电话: ${customer.phone}</p>
+                                    <p>网站: ${customer.website}</p>
+                                    <p>行业: ${customer.industry}</p>
+                                    <button onclick="analyzeCustomer('${customer.id}', '${customer.website}', '${customer.companyName}', '${customer.industry}')">
+                                        AI分析
+                                    </button>
+                                </div>
+                            `;
+                        });
+                        resultDiv.innerHTML = html;
+                    } else {
+                        resultDiv.innerHTML = '<span class="error">❌ No customers found</span>';
+                    }
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ API error: ${response.status}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Failed: ${error.message}</span>`;
+            }
+        }
+
+        async function testAIAnalysis() {
+            const resultDiv = document.getElementById('ai-result');
+            resultDiv.innerHTML = '<div>🔄 Testing AI analysis...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/ai-analysis/analyze-url`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: "https://www.ferrari.com",
+                        businessContext: {
+                            companyName: "Test Company",
+                            industry: "Automotive Manufacturing",
+                            services: ["Manufacturing", "Engineering"],
+                            targetMarkets: ["Global", "Luxury Market"],
+                            uniqueValueProposition: "Premium automotive excellence"
+                        },
+                        analysisDepth: "detailed",
+                        language: "zh"
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('AI Analysis result:', data);
+                    
+                    if (data.success) {
+                        const analysis = data.data.analysis;
+                        let html = `<div class="success">✅ AI Analysis completed</div>`;
+                        html += `<div class="ai-analysis">`;
+                        html += `<h4>Overall Score: ${analysis.overallScore}/100</h4>`;
+                        html += `<h4>5-Dimensional Analysis:</h4>`;
+                        
+                        Object.entries(analysis.dimensions).forEach(([dimension, data]) => {
+                            html += `<p><strong>${dimension}:</strong> ${data.score}/100 - ${data.description}</p>`;
+                        });
+                        
+                        html += `<h4>Recommendation:</h4><p>${analysis.recommendation}</p>`;
+                        html += `</div>`;
+                        resultDiv.innerHTML = html;
+                    } else {
+                        resultDiv.innerHTML = `<span class="error">❌ AI analysis failed: ${JSON.stringify(data)}</span>`;
+                    }
+                } else {
+                    const errorText = await response.text();
+                    resultDiv.innerHTML = `<span class="error">❌ API error: ${response.status} - ${errorText}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Failed: ${error.message}</span>`;
+            }
+        }
+
+        async function analyzeCustomer(customerId, website, companyName, industry) {
+            console.log(`Analyzing customer: ${companyName} - ${website}`);
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/ai-analysis/analyze-url`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: website,
+                        businessContext: {
+                            companyName: companyName,
+                            industry: industry,
+                            services: ["Manufacturing", "Business Solutions"],
+                            targetMarkets: ["Global", "B2B"],
+                            uniqueValueProposition: "Quality business solutions"
+                        },
+                        analysisDepth: "detailed",
+                        language: "zh"
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Customer AI Analysis result:', data);
+                    alert(`AI分析完成！\n公司: ${companyName}\n总分: ${data.data?.analysis?.overallScore}/100`);
+                } else {
+                    alert(`AI分析失败: ${response.status}`);
+                }
+            } catch (error) {
+                alert(`AI分析错误: ${error.message}`);
+            }
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const resultDiv = document.getElementById('upload-result');
+            
+            if (!fileInput.files[0]) {
+                resultDiv.innerHTML = '<span class="error">请选择文件</span>';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/customers/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Upload result:', data);
+                    resultDiv.innerHTML = `<div class="success">✅ Upload completed: ${data.message}</div>`;
+                    // Reload customers after upload
+                    loadCustomers();
+                } else {
+                    const errorText = await response.text();
+                    resultDiv.innerHTML = `<span class="error">❌ Upload failed: ${errorText}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Upload error: ${error.message}</span>`;
+            }
+        }
+
+        // Auto-run tests on page load
+        window.onload = function() {
+            testBackendConnection();
+            setTimeout(loadCustomers, 1000);
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+companyName,contactName,email,country,industry,website,phone
+"Apple Inc","Tim Cook","tim.cook@apple.com","USA","Technology","https://www.apple.com","+1-408-996-1010"
+"Microsoft Corporation","Satya Nadella","satya@microsoft.com","USA","Technology","https://www.microsoft.com","+1-425-882-8080"
+"Toyota Motor Corporation","Akio Toyoda","akio.toyoda@toyota.com","Japan","Automotive","https://www.toyota.com","+81-3-3817-7111"
+"Samsung Electronics","Jong-Hee Han","jong.han@samsung.com","South Korea","Electronics","https://www.samsung.com","+82-2-2255-0114"
+"ASML Holding","Peter Wennink","peter.wennink@asml.com","Netherlands","Technology","https://www.asml.com","+31-40-268-3000"

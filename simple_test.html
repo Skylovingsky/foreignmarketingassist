@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>简单API测试</title>
+</head>
+<body>
+    <h1>API测试页面</h1>
+    <p>请打开浏览器的开发者工具（F12）查看控制台输出</p>
+    
+    <button onclick="testAll()">开始测试</button>
+    <div id="status"></div>
+
+    <script>
+        const API_BASE = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev';
+        
+        async function testAll() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = '<p>测试开始，请查看控制台...</p>';
+            
+            console.log('🚀 开始API测试');
+            console.log('API Base URL:', API_BASE);
+            
+            // Test 1: Health Check
+            try {
+                console.log('📊 测试1: 健康检查');
+                const healthResponse = await fetch(`${API_BASE}/api/agent/health`);
+                console.log('健康检查响应状态:', healthResponse.status);
+                console.log('健康检查响应头:', Object.fromEntries(healthResponse.headers.entries()));
+                const healthData = await healthResponse.json();
+                console.log('健康检查数据:', healthData);
+                statusDiv.innerHTML += '<p>✅ 健康检查通过</p>';
+            } catch (error) {
+                console.error('❌ 健康检查失败:', error);
+                statusDiv.innerHTML += '<p>❌ 健康检查失败: ' + error.message + '</p>';
+            }
+            
+            // Test 2: Get Customers
+            try {
+                console.log('📋 测试2: 获取客户列表');
+                const customersResponse = await fetch(`${API_BASE}/api/customers`);
+                console.log('客户列表响应状态:', customersResponse.status);
+                console.log('客户列表响应头:', Object.fromEntries(customersResponse.headers.entries()));
+                const customersData = await customersResponse.json();
+                console.log('客户列表数据:', customersData);
+                statusDiv.innerHTML += '<p>✅ 获取客户列表成功</p>';
+            } catch (error) {
+                console.error('❌ 获取客户列表失败:', error);
+                statusDiv.innerHTML += '<p>❌ 获取客户列表失败: ' + error.message + '</p>';
+            }
+            
+            // Test 3: Create Customer
+            try {
+                console.log('👥 测试3: 创建客户');
+                const timestamp = Date.now();
+                const customerData = {
+                    companyName: 'Simple Test Company',
+                    contactName: 'Test Contact Person',
+                    email: `simple${timestamp}@test.com`, // 使用时间戳确保邮箱唯一
+                    country: 'Test Country',
+                    industry: 'Test Industry'
+                };
+                
+                console.log('发送客户数据:', customerData);
+                
+                const createResponse = await fetch(`${API_BASE}/api/customers`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(customerData)
+                });
+                
+                console.log('创建客户响应状态:', createResponse.status);
+                console.log('创建客户响应头:', Object.fromEntries(createResponse.headers.entries()));
+                
+                if (createResponse.ok) {
+                    const createData = await createResponse.json();
+                    console.log('创建客户成功数据:', createData);
+                    statusDiv.innerHTML += '<p>✅ 创建客户成功</p>';
+                } else {
+                    const errorData = await createResponse.text();
+                    console.error('创建客户失败响应:', errorData);
+                    statusDiv.innerHTML += '<p>❌ 创建客户失败: ' + createResponse.status + ' - ' + errorData + '</p>';
+                }
+            } catch (error) {
+                console.error('❌ 创建客户网络错误:', error);
+                statusDiv.innerHTML += '<p>❌ 创建客户网络错误: ' + error.message + '</p>';
+            }
+            
+            console.log('🏁 API测试完成');
+            statusDiv.innerHTML += '<p>🏁 测试完成，详细信息请查看控制台</p>';
+        }
+        
+        // 页面加载时显示环境信息
+        window.addEventListener('load', () => {
+            console.log('🌍 环境信息:');
+            console.log('页面URL:', window.location.href);
+            console.log('用户代理:', navigator.userAgent);
+            console.log('API基础URL:', API_BASE);
+        });
+    </script>
+</body>
+</html>

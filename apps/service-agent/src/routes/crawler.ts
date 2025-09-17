@@ -16,7 +16,7 @@ const searchCompaniesSchema = z.object({
   industry: z.string().optional(),
   location: z.string().optional(),
   size: z.string().optional(),
-  maxResults: z.number().min(1).max(20).optional(),
+  maxResults: z.number().min(1).max(10).optional(),
 });
 
 export default async function crawlerRoutes(fastify: FastifyInstance) {

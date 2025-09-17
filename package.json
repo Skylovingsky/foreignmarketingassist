@@ -40,8 +40,11 @@
     "pnpm": ">=8.0.0"
   },
   "dependencies": {
+    "@fastify/multipart": "^8.3.1",
     "@types/cheerio": "^0.22.35",
     "cheerio": "^1.1.2",
-    "pm2": "^6.0.11"
+    "csv-parser": "^3.2.0",
+    "pm2": "^6.0.11",
+    "xlsx": "^0.18.5"
   }
 }

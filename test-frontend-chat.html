@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端聊天测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .result { margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { background-color: #e8f5e8; border-color: #4CAF50; }
+        .error { background-color: #ffeaea; border-color: #f44336; }
+        button { padding: 10px 20px; margin: 5px; }
+        textarea { width: 100%; height: 60px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>🤖 前端聊天功能测试</h1>
+    
+    <div>
+        <h3>测试消息:</h3>
+        <textarea id="testMessage" placeholder="输入测试消息...">你好，我想了解一下外贸开发的最佳实践</textarea>
+        <br>
+        <button onclick="testChatDirectly()">直接测试API</button>
+        <button onclick="testFrontendProxy()">测试前端代理</button>
+        <button onclick="testStreamingChat()">测试流式聊天</button>
+        <button onclick="openRealChatPage()">打开真实聊天页面</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        const BACKEND_URL = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev';
+        const FRONTEND_URL = 'https://3000-ibr8pve55krqf22np4xrh-6532622b.e2b.dev';
+        
+        function addResult(title, content, isSuccess = true) {
+            const div = document.createElement('div');
+            div.className = `result ${isSuccess ? 'success' : 'error'}`;
+            div.innerHTML = `<h4>${title}</h4><div>${content}</div>`;
+            document.getElementById('results').appendChild(div);
+        }
+        
+        async function testChatDirectly() {
+            try {
+                const message = document.getElementById('testMessage').value;
+                const response = await fetch(`${BACKEND_URL}/api/agent/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messages: [{
+                            id: crypto.randomUUID(),
+                            role: 'user',
+                            content: message,
+                            timestamp: new Date().toISOString()
+                        }],
+                        useRag: false,
+                        temperature: 0.7,
+                        maxTokens: 200
+                    })
+                });
+                
+                const data = await response.json();
+                addResult('✅ 直接后端API测试', `
+                    <strong>状态:</strong> ${response.status} ${response.statusText}<br>
+                    <strong>AI回复:</strong> ${data.message.content}<br>
+                    <strong>Token使用:</strong> ${data.usage.totalTokens}
+                `, true);
+            } catch (error) {
+                addResult('❌ 直接后端API测试失败', `错误: ${error.message}`, false);
+            }
+        }
+        
+        async function testFrontendProxy() {
+            try {
+                const message = document.getElementById('testMessage').value;
+                const response = await fetch(`${FRONTEND_URL}/api/agent/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messages: [{
+                            id: crypto.randomUUID(),
+                            role: 'user',
+                            content: message,
+                            timestamp: new Date().toISOString()
+                        }],
+                        useRag: false,
+                        temperature: 0.7,
+                        maxTokens: 200
+                    })
+                });
+                
+                const data = await response.json();
+                addResult('✅ 前端代理API测试', `
+                    <strong>状态:</strong> ${response.status} ${response.statusText}<br>
+                    <strong>AI回复:</strong> ${data.message.content}<br>
+                    <strong>Token使用:</strong> ${data.usage.totalTokens}<br>
+                    <strong>说明:</strong> 前端Next.js代理工作正常！
+                `, true);
+            } catch (error) {
+                addResult('❌ 前端代理API测试失败', `错误: ${error.message}`, false);
+            }
+        }
+        
+        async function testStreamingChat() {
+            try {
+                const message = document.getElementById('testMessage').value;
+                const response = await fetch(`${FRONTEND_URL}/api/agent/chat/stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messages: [{
+                            id: crypto.randomUUID(),
+                            role: 'user',
+                            content: message,
+                            timestamp: new Date().toISOString()
+                        }],
+                        useRag: false,
+                        temperature: 0.7,
+                        maxTokens: 100
+                    })
+                });
+                
+                if (response.body) {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let fullContent = '';
+                    
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.split('\\n');
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                if (data === '[DONE]') {
+                                    addResult('✅ 流式聊天测试', `
+                                        <strong>状态:</strong> ${response.status} 流式传输成功<br>
+                                        <strong>完整回复:</strong> ${fullContent}<br>
+                                        <strong>说明:</strong> 流式API工作正常！
+                                    `, true);
+                                    return;
+                                }
+                                
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    if (parsed.content) {
+                                        fullContent += parsed.content;
+                                    }
+                                } catch (e) {
+                                    // 跳过无法解析的数据
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    addResult('❌ 流式聊天测试失败', '响应体为空', false);
+                }
+            } catch (error) {
+                addResult('❌ 流式聊天测试失败', `错误: ${error.message}`, false);
+            }
+        }
+        
+        function openRealChatPage() {
+            window.open(`${FRONTEND_URL}/agent`, '_blank');
+            addResult('📄 打开真实聊天页面', `
+                已在新窗口中打开: <a href="${FRONTEND_URL}/agent" target="_blank">${FRONTEND_URL}/agent</a><br>
+                <strong>说明:</strong> 请在新窗口中测试真实的聊天界面
+            `, true);
+        }
+        
+        // 自动运行一些测试
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                console.log('开始自动测试...');
+                testChatDirectly();
+                setTimeout(testFrontendProxy, 2000);
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

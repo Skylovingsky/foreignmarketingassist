@@ -1,333 +1,455 @@
-'use client';
+'use client'
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import AIAnalysisCard from '@/components/company/AIAnalysisCard';
-import ContactInfoCard from '@/components/company/ContactInfoCard';
-import type { Company } from '@trade-assistant/dto';
+import { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { ArrowLeft, ExternalLink, RefreshCw, MessageSquare, Download, Edit, Globe } from 'lucide-react'
+import Navigation from '@/components/layout/Navigation'
+import StatusPill from '@/components/common/StatusPill'
+import LeadScore from '@/components/common/LeadScore'
+import EvidenceTab from '@/components/company/EvidenceTab'
+import PeopleTab from '@/components/company/PeopleTab'
+import ScoreTab from '@/components/company/ScoreTab'
+import AgentTab from '@/components/company/AgentTab'
+import ReportTab from '@/components/company/ReportTab'
 
-// Mock公司数据
-const mockCompanies: Record<string, Company> = {
-  '1': {
-    id: '1',
-    name: 'Global Tech Solutions',
-    domain: 'globaltech.com',
-    country: '美国',
-    industry: '科技',
-    employeeCount: 250,
-    website: 'https://globaltech.com',
-    description: '专业的技术解决方案提供商，专注于企业级软件开发和云服务',
-    tags: ['B2B', '科技', '软件开发', '云服务'],
-    createdAt: '2024-01-15T08:00:00Z',
-    updatedAt: '2024-01-15T08:00:00Z',
-  },
-  '2': {
-    id: '2',
-    name: 'European Manufacturing Ltd',
-    domain: 'euroman.co.uk',
-    country: '英国',
-    industry: '制造业',
-    employeeCount: 500,
-    website: 'https://euroman.co.uk',
-    description: '欧洲领先的制造商，主要生产工业设备和零部件',
-    tags: ['制造', '出口', 'OEM', '工业设备'],
-    createdAt: '2024-01-16T09:30:00Z',
-    updatedAt: '2024-01-16T09:30:00Z',
-  },
-};
+interface CompanyDetail {
+  id: string
+  companyName: string
+  country: string
+  industry?: string
+  website?: string
+  status: 'NEW' | 'CRAWLED' | 'ANALYZED'
+  leadScore?: number
+  crawledUrls?: Array<{
+    url: string
+    title: string
+    content: string
+    emails: string[]
+    phones: string[]
+    keywords: string[]
+  }>
+  contacts?: Array<{
+    name: string
+    title: string
+    email: string
+    phone: string
+    confidence: number
+    source: string
+    type: 'personal' | 'generic'
+  }>
+  scoreBreakdown?: {
+    personalEmail: number
+    directPhone: number
+    procurementConfidence: number
+    productSimilarity: number
+    siteFreshness: number
+    belongingConfidence: number
+  }
+  analysis?: string
+  detailedAnalysisReport?: string
+  lastAnalyzed?: string
+  createdAt: string
+}
+
+const tabs = [
+  { id: 'evidence', label: 'Evidence' },
+  { id: 'people', label: 'People' },
+  { id: 'score', label: 'Score' },
+  { id: 'agent', label: 'Agent' },
+  { id: 'report', label: 'Report' },
+]
 
 export default function CompanyDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const companyId = params.id as string;
-  
-  const [company, setCompany] = useState<Company | null>(null);
-  const [analysis, setAnalysis] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'analysis' | 'contact' | 'documents'>('analysis');
+  const params = useParams()
+  const router = useRouter()
+  const [company, setCompany] = useState<CompanyDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('evidence')
+  const [refreshing, setRefreshing] = useState(false)
+  const [showWebsiteInput, setShowWebsiteInput] = useState(false)
+  const [websiteUrl, setWebsiteUrl] = useState('')
 
   useEffect(() => {
-    // 模拟加载公司信息
-    const loadCompany = async () => {
-      setLoading(true);
-      
-      // 模拟API延迟
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const companyData = mockCompanies[companyId];
-      if (companyData) {
-        setCompany(companyData);
-        // 自动加载AI分析
-        loadAnalysis();
-      } else {
-        // 公司不存在，返回列表页
-        router.push('/');
-      }
-      
-      setLoading(false);
-    };
+    if (params.id) {
+      fetchCompanyDetails(params.id as string)
+    }
+  }, [params.id])
 
-    loadCompany();
-  }, [companyId, router]);
-
-  const loadAnalysis = async () => {
+  const fetchCompanyDetails = async (companyId: string) => {
     try {
-      setAnalysisLoading(true);
+      setLoading(true)
+      const API_BASE = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev'
+      const response = await fetch(`${API_BASE}/api/customers/${companyId}`)
+      const data = await response.json()
       
-      // 调用AI分析API
-      const response = await fetch(`/api/agent/company/${companyId}/analysis`);
-      
-      if (response.ok) {
-        const result = await response.json();
-        setAnalysis(result.analysis);
+      if (data.success) {
+        setCompany(data.data)
       } else {
-        console.error('Failed to load analysis');
+        console.error('Failed to fetch company details')
       }
     } catch (error) {
-      console.error('Analysis loading error:', error);
+      console.error('Error fetching company details:', error)
     } finally {
-      setAnalysisLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
-  const handleReAnalyze = async () => {
-    setAnalysisLoading(true);
+  const handleStartAnalysis = async () => {
+    if (!company) return
     
-    // 模拟重新分析（实际应用中需要提供公司文档内容）
-    const mockDocumentContent = `
-    公司名称: ${company?.name}
-    官方网站: ${company?.website}
-    行业: ${company?.industry}
-    员工数: ${company?.employeeCount}
-    描述: ${company?.description}
-    
-    这是一个模拟的爬虫文档内容，包含了从公司网站抓取的信息...
-    联系我们页面显示了以下信息：
-    - 邮箱: contact@${company?.domain}
-    - 电话: +1-555-123-4567
-    - 地址: 123 Business Street, New York, NY
-    
-    关于我们页面内容：
-    我们是一家专业的${company?.industry}公司...
-    `;
+    try {
+      setRefreshing(true)
+      const API_BASE = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev'
+      const response = await fetch(`${API_BASE}/api/customers/${company.id}/analyze`, {
+        method: 'POST'
+      })
+      
+      const result = await response.json()
+      
+      if (response.ok && result.success) {
+        // Refresh company details to show updated data
+        await fetchCompanyDetails(company.id)
+        console.log('Analysis completed successfully:', result.message)
+      } else {
+        console.error('Analysis failed:', result.error)
+        alert(`分析失败: ${result.message || result.error}`)
+      }
+    } catch (error) {
+      console.error('Error starting analysis:', error)
+      alert('分析过程中发生错误，请稍后重试')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const handleStartOutreach = () => {
+    if (!company) return
+    router.push(`/outreach?companyId=${company.id}`)
+  }
+
+  const handleUpdateWebsite = async () => {
+    if (!company || !websiteUrl.trim()) return
 
     try {
-      const response = await fetch('/api/agent/analyze-company', {
-        method: 'POST',
+      const API_BASE = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev'
+      const response = await fetch(`${API_BASE}/api/customers/${company.id}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          companyId: companyId,
-          documentContent: mockDocumentContent,
-          analysisType: 'full_research',
-          forceReanalysis: true,
-        }),
-      });
+          website: websiteUrl.trim()
+        })
+      })
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.status === 'completed') {
-          setAnalysis(result.analysis);
-        }
+      const result = await response.json()
+
+      if (response.ok && result.success) {
+        // 刷新公司数据
+        await fetchCompanyDetails(company.id)
+        setShowWebsiteInput(false)
+        setWebsiteUrl('')
+        alert('网站地址已更新成功')
+      } else {
+        console.error('Failed to update website:', result.error)
+        alert('更新网站地址失败')
       }
     } catch (error) {
-      console.error('Re-analysis failed:', error);
-    } finally {
-      setAnalysisLoading(false);
+      console.error('Error updating website:', error)
+      alert('更新网站地址时发生错误')
     }
-  };
+  }
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="card">
-                <div className="h-64 bg-gray-200 rounded"></div>
-              </div>
+      <div className="min-h-screen bg-neutral-50">
+        <Navigation />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse">
+            <div className="h-6 bg-gray-200 rounded w-32 mb-6"></div>
+            <div className="card p-6 mb-8">
+              <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/4"></div>
             </div>
-            <div className="space-y-6">
-              <div className="card">
-                <div className="h-48 bg-gray-200 rounded"></div>
-              </div>
+            <div className="card p-6">
+              <div className="h-96 bg-gray-200 rounded"></div>
             </div>
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   if (!company) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center">
-          <div className="text-6xl mb-4">🔍</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">公司不存在</h2>
-          <p className="text-gray-600 mb-4">找不到指定的公司信息</p>
-          <button 
-            onClick={() => router.push('/')}
-            className="btn-primary"
-          >
-            返回客户列表
-          </button>
+      <div className="min-h-screen bg-neutral-50">
+        <Navigation />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Company Not Found</h2>
+            <p className="text-gray-600 mb-6">The company you're looking for doesn't exist.</p>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="btn-primary"
+            >
+              Back to Dashboard
+            </button>
+          </div>
         </div>
       </div>
-    );
+    )
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* 面包屑导航 */}
-      <nav className="flex items-center space-x-2 text-sm text-gray-500 mb-6">
-        <button 
-          onClick={() => router.push('/')}
-          className="hover:text-gray-700"
+    <div className="min-h-screen bg-neutral-50">
+      <Navigation />
+      
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Back Button */}
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="flex items-center text-gray-600 hover:text-gray-900 mb-6"
         >
-          客户管理
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Dashboard
         </button>
-        <span>/</span>
-        <span className="text-gray-900">{company.name}</span>
-      </nav>
 
-      {/* 公司头部信息 */}
-      <div className="card mb-8">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center space-x-4 mb-4">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{company.name}</h1>
-                <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
-                  <span>🌍 {company.country}</span>
-                  <span>🏭 {company.industry}</span>
-                  {company.employeeCount && <span>👥 {company.employeeCount} 人</span>}
+        {/* Company Header */}
+        <div className="card p-6 mb-8">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center mb-2">
+                <h1 className="text-3xl font-bold text-gray-900 mr-4">
+                  {company.companyName}
+                </h1>
+                <StatusPill status={company.status} size="md" />
+              </div>
+              
+              <div className="flex items-center space-x-6 text-sm text-gray-600">
+                <span className="flex items-center">
+                  <Globe className="w-4 h-4 mr-1" />
+                  {company.country}
+                </span>
+                {company.industry && (
+                  <>
+                    <span>•</span>
+                    <span>{company.industry}</span>
+                  </>
+                )}
+                <div className="flex items-center">
+                  <span>•</span>
+                  {company.website ? (
+                    <div className="flex items-center space-x-2 ml-2">
+                      <a
+                        href={company.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center text-indigo-600 hover:text-indigo-700"
+                      >
+                        网站
+                        <ExternalLink className="w-3 h-3 ml-1" />
+                      </a>
+                      <button
+                        onClick={() => {
+                          setWebsiteUrl(company.website || '')
+                          setShowWebsiteInput(true)
+                        }}
+                        className="text-gray-400 hover:text-gray-600"
+                        title="编辑网站"
+                      >
+                        <Edit className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowWebsiteInput(true)}
+                      className="ml-2 text-gray-400 hover:text-indigo-600 flex items-center"
+                      title="添加网站"
+                    >
+                      <span className="text-xs">无网站</span>
+                      <Edit className="w-3 h-3 ml-1" />
+                    </button>
+                  )}
                 </div>
               </div>
+              
+              {company.leadScore !== undefined && (
+                <div className="mt-4">
+                  <LeadScore score={company.leadScore} size="lg" showLabel />
+                </div>
+              )}
             </div>
-            
-            {company.description && (
-              <p className="text-gray-700 mb-4">{company.description}</p>
-            )}
-            
-            {company.website && (
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-600">🌐</span>
-                <a 
-                  href={company.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-brand-600 hover:text-brand-700 hover:underline"
+
+            {/* Action Buttons */}
+            <div className="flex items-center space-x-3">
+              {company.status === 'NEW' && (
+                <button
+                  onClick={handleStartAnalysis}
+                  disabled={refreshing}
+                  className="btn-primary flex items-center"
                 >
-                  {company.website}
-                </a>
-              </div>
-            )}
-          </div>
-          
-          <div className="flex flex-col space-y-2">
-            <button
-              onClick={handleReAnalyze}
-              disabled={analysisLoading}
-              className="btn-primary disabled:opacity-50"
-            >
-              {analysisLoading ? '分析中...' : '🤖 AI分析'}
-            </button>
-            <button className="btn-secondary">
-              ⭐ 加入收藏
-            </button>
+                  {refreshing ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                  )}
+                  开始爬取与AI分析
+                </button>
+              )}
+
+              {(company.status === 'CRAWLED' || company.status === 'ANALYZED') && (
+                <button
+                  onClick={handleStartAnalysis}
+                  disabled={refreshing}
+                  className="btn-secondary flex items-center"
+                >
+                  {refreshing ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                  )}
+                  重新分析
+                </button>
+              )}
+              
+              {company.status === 'ANALYZED' && (
+                <button
+                  onClick={handleStartOutreach}
+                  className="btn-primary flex items-center"
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  开始外联
+                </button>
+              )}
+              
+              <button className="btn-secondary flex items-center">
+                <Download className="w-4 h-4 mr-2" />
+                导出
+              </button>
+            </div>
           </div>
         </div>
-        
-        {/* 标签 */}
-        {company.tags && company.tags.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-200">
-            {company.tags.map((tag, index) => (
-              <span
-                key={index}
-                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-              >
-                {tag}
-              </span>
-            ))}
+
+        {/* Tabs */}
+        <div className="card">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8 px-6">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === tab.id
+                      ? 'border-indigo-500 text-indigo-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
           </div>
-        )}
-      </div>
 
-      {/* 标签页导航 */}
-      <div className="flex border-b border-gray-200 mb-6">
-        <button
-          onClick={() => setActiveTab('analysis')}
-          className={`px-6 py-3 text-sm font-medium border-b-2 ${
-            activeTab === 'analysis'
-              ? 'border-brand-500 text-brand-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          🤖 AI分析报告
-        </button>
-        <button
-          onClick={() => setActiveTab('contact')}
-          className={`px-6 py-3 text-sm font-medium border-b-2 ${
-            activeTab === 'contact'
-              ? 'border-brand-500 text-brand-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          📞 联系信息
-        </button>
-        <button
-          onClick={() => setActiveTab('documents')}
-          className={`px-6 py-3 text-sm font-medium border-b-2 ${
-            activeTab === 'documents'
-              ? 'border-brand-500 text-brand-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          📄 源文档
-        </button>
-      </div>
-
-      {/* 标签页内容 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {activeTab === 'analysis' && (
-          <>
-            <div className="lg:col-span-2">
-              <AIAnalysisCard 
-                analysis={analysis}
-                loading={analysisLoading}
-                onReAnalyze={handleReAnalyze}
+          {/* Tab Content */}
+          <div className="p-6">
+            {activeTab === 'evidence' && (
+              <EvidenceTab 
+                crawledUrls={company.crawledUrls || []} 
+                companyId={company.id}
+                onStartAnalysis={handleStartAnalysis}
+                isAnalyzing={refreshing}
               />
-            </div>
-            <div>
-              <ContactInfoCard analysis={analysis} />
-            </div>
-          </>
-        )}
-        
-        {activeTab === 'contact' && (
-          <div className="lg:col-span-3">
-            <ContactInfoCard analysis={analysis} />
+            )}
+            
+            {activeTab === 'people' && (
+              <PeopleTab 
+                contacts={company.contacts || []} 
+                companyId={company.id}
+              />
+            )}
+            
+            {activeTab === 'score' && (
+              <ScoreTab 
+                leadScore={company.leadScore || 0}
+                scoreBreakdown={company.scoreBreakdown}
+                companyId={company.id}
+              />
+            )}
+            
+            {activeTab === 'agent' && (
+              <AgentTab 
+                company={company}
+              />
+            )}
+            
+            {activeTab === 'report' && (
+              <ReportTab 
+                company={company}
+              />
+            )}
           </div>
-        )}
-        
-        {activeTab === 'documents' && (
-          <div className="lg:col-span-3">
-            <div className="card text-center">
-              <div className="text-4xl mb-4">📄</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">源文档管理</h3>
-              <p className="text-gray-600 mb-4">
-                这里将显示爬虫抓取的原始网页内容和文档
-              </p>
-              <div className="text-sm text-gray-500">
-                功能开发中，敬请期待...
+        </div>
+      </div>
+
+      {/* Website Input Modal */}
+      {showWebsiteInput && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {company?.website ? '编辑网站地址' : '添加网站地址'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowWebsiteInput(false)
+                    setWebsiteUrl('')
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  网站URL
+                </label>
+                <input
+                  type="url"
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  autoFocus
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  请输入完整的网站地址，包含 http:// 或 https://
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setShowWebsiteInput(false)
+                    setWebsiteUrl('')
+                  }}
+                  className="btn-secondary"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleUpdateWebsite}
+                  disabled={!websiteUrl.trim()}
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  保存
+                </button>
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
-  );
+  )
 }

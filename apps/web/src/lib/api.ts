@@ -1,7 +1,7 @@
 import type { ChatRequest, ChatResponse, AgentMessage } from '@trade-assistant/dto';
 
-// API配置
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+// API配置 - 使用相对路径，让Next.js代理到后端
+const API_BASE_URL = '';
 
 // API客户端类
 export class ApiClient {

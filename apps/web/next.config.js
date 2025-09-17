@@ -2,7 +2,7 @@
 const nextConfig = {
   transpilePackages: ['@trade-assistant/dto'],
   async rewrites() {
-    const agentApiUrl = process.env.AGENT_API_URL || 'http://localhost:3001';
+    const agentApiUrl = process.env.AGENT_API_URL || 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev';
     console.log('Agent API URL:', agentApiUrl);
     
     return [

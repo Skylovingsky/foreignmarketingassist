@@ -119,6 +119,159 @@ export class WebCrawlerService {
   }
 
   /**
+   * 清理并标准化搜索关键词
+   */
+  private sanitizeSearchKeyword(keyword: string): string {
+    return keyword
+      // 移除或替换特殊字符
+      .replace(/[^\w\s\-\.]/g, ' ')  // 保留字母、数字、空格、连字符、点
+      .replace(/\s+/g, ' ')           // 多个空格合并为一个
+      .trim();
+  }
+
+  /**
+   * 执行最简单的Google搜索 - 绕过复杂的查询构建
+   */
+  private async performSimpleGoogleSearch(keyword: string, maxResults: number = 10): Promise<GoogleSearchResult[]> {
+    try {
+      if (!this.config.googleApiKey || !this.config.googleSearchEngineId) {
+        throw new Error('Google API配置缺失');
+      }
+
+      // 检查频率限制
+      await this.checkRateLimit();
+
+      // 多级别搜索策略
+      const searchStrategies = [
+        // 策略1: 直接使用原始关键词（带引号）
+        () => `"${keyword}"`,
+        
+        // 策略2: 清理特殊字符后使用
+        () => {
+          const cleaned = this.sanitizeSearchKeyword(keyword);
+          return `"${cleaned}"`;
+        },
+        
+        // 策略3: 移除所有标点符号，只保留字母和数字
+        () => {
+          const alphanumeric = keyword.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+          return `"${alphanumeric}"`;
+        },
+        
+        // 策略4: 拆分为单词，取前几个主要词
+        () => {
+          const words = keyword.split(/\s+/).filter(word => word.length > 2);
+          const mainWords = words.slice(0, 3).join(' ');
+          return `"${mainWords}"`;
+        },
+        
+        // 策略5: 最简单的单词搜索（不带引号）
+        () => {
+          const words = keyword.replace(/[^a-zA-Z0-9\s]/g, ' ').split(/\s+/).filter(word => word.length > 2);
+          return words.slice(0, 2).join(' ');
+        },
+        
+        // 策略6: 使用与成功curl相同的格式 - 去掉S.A.C.等后缀
+        () => {
+          const cleanName = keyword
+            .replace(/\s+S\.A\.C\./gi, '')
+            .replace(/\s+S\.A\./gi, '')
+            .replace(/\s+INC\./gi, '')
+            .replace(/\s+LTD\./gi, '')
+            .replace(/\s+LLC/gi, '')
+            .trim();
+          return cleanName;
+        }
+      ];
+
+      // 依次尝试各种搜索策略
+      for (let i = 0; i < searchStrategies.length; i++) {
+        try {
+          const query = searchStrategies[i]();
+          console.log(`🔍 尝试搜索策略 ${i + 1}: "${query}"`);
+
+          // Build URL manually with proper encoding like successful curl
+          const baseUrl = 'https://www.googleapis.com/customsearch/v1';
+          const queryParams = [
+            `key=${encodeURIComponent(this.config.googleApiKey!)}`,
+            `cx=${encodeURIComponent(this.config.googleSearchEngineId!)}`,
+            `q=${encodeURIComponent(query)}`,
+            `num=${encodeURIComponent(String(maxResults))}`
+          ];
+          
+          const finalUrl = `${baseUrl}?${queryParams.join('&')}`;
+          console.log(`📡 请求URL: ${finalUrl}`);
+          
+          const response = await fetch(finalUrl);
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`搜索策略 ${i + 1} 失败:`, {
+              status: response.status,
+              statusText: response.statusText,
+              error: errorText,
+              query: query
+            });
+            
+            // 如果是400错误且还有其他策略，继续尝试
+            if (response.status === 400 && i < searchStrategies.length - 1) {
+              console.log(`⏭️ 策略 ${i + 1} 失败，尝试下一个策略...`);
+              continue;
+            }
+            
+            throw new Error(`Google搜索API错误: ${response.status} - ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          
+          console.log(`🔍 搜索策略 ${i + 1} API响应:`, {
+            totalResults: data.searchInformation?.totalResults || '未知',
+            itemsFound: data.items ? data.items.length : 0,
+            hasItems: !!data.items,
+            strategy: i + 1,
+            query: query
+          });
+          
+          if (!data.items || data.items.length === 0) {
+            console.log(`⚠️ 策略 ${i + 1} 无结果，尝试下一个策略...`);
+            continue;
+          }
+
+          const results = data.items.map((item: any) => ({
+            title: item.title,
+            link: item.link,
+            snippet: item.snippet,
+            displayLink: item.displayLink,
+          }));
+          
+          console.log(`✅ 策略 ${i + 1} 成功找到 ${results.length} 个结果`);
+          return results;
+          
+        } catch (strategyError) {
+          console.error(`策略 ${i + 1} 执行失败:`, strategyError);
+          
+          // 如果还有其他策略，继续尝试
+          if (i < searchStrategies.length - 1) {
+            console.log(`⏭️ 策略 ${i + 1} 失败，尝试下一个策略...`);
+            continue;
+          }
+          
+          // 所有策略都失败了
+          throw strategyError;
+        }
+      }
+      
+      // 如果所有策略都失败
+      console.log(`❌ 所有搜索策略都失败`);
+      return [];
+      
+    } catch (error) {
+      console.error('简单Google搜索完全失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 使用Google Custom Search API搜索公司
    */
   async searchCompanies(query: CompanySearchQuery): Promise<GoogleSearchResult[]> {
@@ -133,38 +286,94 @@ export class WebCrawlerService {
       // 构建精准搜索查询
       const searchTerms = this.buildAdvancedSearchQuery(query);
 
-      const searchUrl = new URL('https://www.googleapis.com/customsearch/v1');
-      searchUrl.searchParams.set('key', this.config.googleApiKey!);
-      searchUrl.searchParams.set('cx', this.config.googleSearchEngineId!);
-      searchUrl.searchParams.set('q', searchTerms);
-      searchUrl.searchParams.set('num', String(query.maxResults || 10));
+      // Build URL manually with proper encoding like successful curl
+      const baseUrl = 'https://www.googleapis.com/customsearch/v1';
+      const queryParams = [
+        `key=${encodeURIComponent(this.config.googleApiKey!)}`,
+        `cx=${encodeURIComponent(this.config.googleSearchEngineId!)}`,
+        `q=${encodeURIComponent(searchTerms)}`,
+        `num=${encodeURIComponent(String(query.maxResults || 10))}`
+      ];
       
       // 添加高级搜索参数
-      if (this.config.cseGl) searchUrl.searchParams.set('gl', this.config.cseGl);
-      if (this.config.cseHl) searchUrl.searchParams.set('hl', this.config.cseHl);
-      if (this.config.cseLr) searchUrl.searchParams.set('lr', this.config.cseLr);
-      if (this.config.cseCr) searchUrl.searchParams.set('cr', this.config.cseCr);
-      if (this.config.cseDate) searchUrl.searchParams.set('dateRestrict', this.config.cseDate);
+      if (this.config.cseGl) queryParams.push(`gl=${encodeURIComponent(this.config.cseGl)}`);
+      if (this.config.cseHl) queryParams.push(`hl=${encodeURIComponent(this.config.cseHl)}`);
+      if (this.config.cseLr) queryParams.push(`lr=${encodeURIComponent(this.config.cseLr)}`);
+      if (this.config.cseCr) queryParams.push(`cr=${encodeURIComponent(this.config.cseCr)}`);
+      if (this.config.cseDate) queryParams.push(`dateRestrict=${encodeURIComponent(this.config.cseDate)}`);
 
+      const finalUrl = `${baseUrl}?${queryParams.join('&')}`;
       console.log(`执行Google搜索: ${searchTerms}`);
+      console.log(`📡 请求URL: ${finalUrl}`);
 
-      const response = await fetch(searchUrl.toString());
+      const response = await fetch(finalUrl);
       if (!response.ok) {
-        throw new Error(`Google搜索API错误: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`Google搜索API详细错误:`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        throw new Error(`Google搜索API错误: ${response.status} - ${response.statusText}`);
       }
 
       const data = await response.json();
       
-      if (!data.items) {
+      console.log(`🔍 Google API响应数据:`, {
+        totalResults: data.searchInformation?.totalResults || '未知',
+        searchTime: data.searchInformation?.searchTime || '未知',
+        itemsFound: data.items ? data.items.length : 0,
+        hasItems: !!data.items
+      });
+      
+      if (!data.items || data.items.length === 0) {
+        console.log(`⚠️ 复杂查询无结果，尝试简化查询...`);
+        
+        // 尝试更简单的查询作为备用方案
+        if (query.keywords.length > 0) {
+          const fallbackQuery = `"${query.keywords[0]}"`;
+          console.log(`🔄 备用查询: ${fallbackQuery}`);
+          
+          try {
+            const baseUrl = 'https://www.googleapis.com/customsearch/v1';
+            const queryParams = [
+              `key=${encodeURIComponent(this.config.googleApiKey!)}`,
+              `cx=${encodeURIComponent(this.config.googleSearchEngineId!)}`,
+              `q=${encodeURIComponent(fallbackQuery)}`,
+              `num=${encodeURIComponent(String(query.maxResults || 10))}`
+            ];
+            
+            const fallbackUrl = `${baseUrl}?${queryParams.join('&')}`;
+            const fallbackResponse = await fetch(fallbackUrl);
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              if (fallbackData.items && fallbackData.items.length > 0) {
+                console.log(`✅ 备用查询成功找到 ${fallbackData.items.length} 个结果`);
+                return fallbackData.items.map((item: any) => ({
+                  title: item.title,
+                  link: item.link,
+                  snippet: item.snippet,
+                  displayLink: item.displayLink,
+                }));
+              }
+            }
+          } catch (fallbackError) {
+            console.error('备用查询也失败:', fallbackError);
+          }
+        }
+        
         return [];
       }
 
-      return data.items.map((item: any) => ({
+      const results = data.items.map((item: any) => ({
         title: item.title,
         link: item.link,
         snippet: item.snippet,
         displayLink: item.displayLink,
       }));
+      
+      console.log(`✅ 成功处理 ${results.length} 个搜索结果`);
+      return results;
     } catch (error) {
       console.error('Google搜索失败:', error);
       throw error;
@@ -265,8 +474,34 @@ export class WebCrawlerService {
     try {
       console.log(`开始搜索和爬取公司，关键词: ${query.keywords.join(', ')}`);
       
-      // 1. 使用Google搜索获取候选网站
-      const searchResults = await this.searchCompanies(query);
+      // 1. 使用Google搜索获取候选网站，如果失败则尝试备用策略
+      let searchResults;
+      try {
+        searchResults = await this.searchCompanies(query);
+      } catch (searchError) {
+        console.error(`主搜索失败，尝试简化搜索策略:`, searchError);
+        
+        // 尝试更简单的搜索策略
+        if (query.keywords.length > 0) {
+          const simplifiedQuery = {
+            keywords: [query.keywords[0]], // 只使用第一个关键词
+            maxResults: query.maxResults || 10
+          };
+          
+          try {
+            console.log(`🔄 尝试简化搜索: ${simplifiedQuery.keywords[0]}`);
+            // 直接使用最简单的Google搜索，不通过复杂的查询构建逻辑
+            const directSearchResults = await this.performSimpleGoogleSearch(simplifiedQuery.keywords[0], simplifiedQuery.maxResults || 10);
+            searchResults = directSearchResults;
+          } catch (fallbackError) {
+            console.error(`备用搜索也失败:`, fallbackError);
+            throw new Error(`所有搜索策略都失败: ${searchError instanceof Error ? searchError.message : String(searchError)}`);
+          }
+        } else {
+          throw searchError;
+        }
+      }
+      
       console.log(`找到 ${searchResults.length} 个搜索结果`);
 
       // 2. 爬取每个网站
@@ -569,70 +804,46 @@ export class WebCrawlerService {
 
   /**
    * 构建高级搜索查询
+   * 简化查询以避免Google Custom Search API的400错误
    */
   private buildAdvancedSearchQuery(query: CompanySearchQuery): string {
     const searchParts: string[] = [];
     
-    // 核心关键词 - 使用引号确保精确匹配
+    // 核心关键词 - 使用简单的引号匹配
     if (query.keywords.length > 0) {
-      const keywordQuery = query.keywords.map(kw => `"${kw}"`).join(' OR ');
-      searchParts.push(`(${keywordQuery})`);
+      // 对于多个关键词，只使用第一个主要关键词
+      const mainKeyword = query.keywords[0];
+      searchParts.push(`"${mainKeyword}"`);
     }
     
-    // 行业相关搜索
+    // 添加通用公司标识词，但保持简单
+    searchParts.push('company OR corporation OR ltd OR inc OR llc');
+    
+    // 地理位置 - 暂时注释掉以避免查询过于复杂导致400错误
+    // 后续可以在fallback机制中单独处理地理位置
+    // if (query.location) {
+    //   searchParts.push(`"${query.location}"`);
+    // }
+    
+    // 行业信息 - 如果提供的话
     if (query.industry) {
-      const industryTerms = [
-        `"${query.industry}"`,
-        `industry:"${query.industry}"`,
-        `sector:"${query.industry}"`,
-      ];
-      searchParts.push(`(${industryTerms.join(' OR ')})`);
+      searchParts.push(`"${query.industry}"`);
     }
     
-    // 地理位置
-    if (query.location) {
-      const locationTerms = [
-        `"${query.location}"`,
-        `location:"${query.location}"`,
-        `based:"${query.location}"`,
-        `headquarters:"${query.location}"`,
-      ];
-      searchParts.push(`(${locationTerms.join(' OR ')})`);
-    }
-    
-    // 公司规模
-    if (query.size) {
-      const sizeTerms = [
-        `employees:"${query.size}"`,
-        `size:"${query.size}"`,
-        `staff:"${query.size}"`,
-      ];
-      searchParts.push(`(${sizeTerms.join(' OR ')})`);
-    }
-    
-    // 公司类型标识符 - 确保找到的是公司
-    const companyIdentifiers = [
-      'company', 'corporation', 'corp', 'ltd', 'limited', 
-      'inc', 'incorporated', 'llc', 'co', 'enterprise',
-      'group', 'holdings', 'solutions', 'services', 'systems',
-    ];
-    searchParts.push(`(${companyIdentifiers.join(' OR ')})`);
-    
-    // 排除不相关的站点
+    // 简单排除主要社交媒体站点
     const excludeSites = [
       '-site:linkedin.com',
-      '-site:facebook.com', 
-      '-site:twitter.com',
-      '-site:instagram.com',
-      '-site:youtube.com',
-      '-site:wikipedia.org',
-      '-site:crunchbase.com',
-      // '-site:glassdoor.com',  // 可能有用的公司信息
+      '-site:facebook.com',
+      '-site:twitter.com'
     ];
     
-    // 组合搜索查询
-    let finalQuery = searchParts.join(' AND ');
-    finalQuery += ' ' + excludeSites.join(' ');
+    // 组合搜索查询 - 使用空格分隔，让Google自然处理
+    let finalQuery = searchParts.join(' ');
+    
+    // 添加站点排除
+    if (excludeSites.length > 0) {
+      finalQuery += ' ' + excludeSites.join(' ');
+    }
     
     console.log(`🔍 构建的搜索查询: ${finalQuery}`);
     return finalQuery;

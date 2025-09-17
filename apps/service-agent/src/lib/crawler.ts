@@ -119,6 +119,67 @@ export class WebCrawlerService {
   }
 
   /**
+   * 执行最简单的Google搜索 - 绕过复杂的查询构建
+   */
+  private async performSimpleGoogleSearch(keyword: string, maxResults: number = 10): Promise<GoogleSearchResult[]> {
+    try {
+      if (!this.config.googleApiKey || !this.config.googleSearchEngineId) {
+        throw new Error('Google API配置缺失');
+      }
+
+      // 检查频率限制
+      await this.checkRateLimit();
+
+      // 使用最简单的查询 - 只是带引号的关键词
+      const simpleQuery = `"${keyword}"`;
+      console.log(`🔍 执行超简单搜索: ${simpleQuery}`);
+
+      const searchUrl = new URL('https://www.googleapis.com/customsearch/v1');
+      searchUrl.searchParams.set('key', this.config.googleApiKey!);
+      searchUrl.searchParams.set('cx', this.config.googleSearchEngineId!);
+      searchUrl.searchParams.set('q', simpleQuery);
+      searchUrl.searchParams.set('num', String(maxResults));
+      
+      const response = await fetch(searchUrl.toString());
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`简单搜索API详细错误:`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        throw new Error(`Google搜索API错误: ${response.status} - ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      console.log(`🔍 简单搜索API响应:`, {
+        totalResults: data.searchInformation?.totalResults || '未知',
+        itemsFound: data.items ? data.items.length : 0,
+        hasItems: !!data.items
+      });
+      
+      if (!data.items) {
+        console.log(`⚠️ 简单搜索也没有结果`);
+        return [];
+      }
+
+      const results = data.items.map((item: any) => ({
+        title: item.title,
+        link: item.link,
+        snippet: item.snippet,
+        displayLink: item.displayLink,
+      }));
+      
+      console.log(`✅ 简单搜索成功找到 ${results.length} 个结果`);
+      return results;
+    } catch (error) {
+      console.error('简单Google搜索失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 使用Google Custom Search API搜索公司
    */
   async searchCompanies(query: CompanySearchQuery): Promise<GoogleSearchResult[]> {
@@ -329,7 +390,9 @@ export class WebCrawlerService {
           
           try {
             console.log(`🔄 尝试简化搜索: ${simplifiedQuery.keywords[0]}`);
-            searchResults = await this.searchCompanies(simplifiedQuery);
+            // 直接使用最简单的Google搜索，不通过复杂的查询构建逻辑
+            const directSearchResults = await this.performSimpleGoogleSearch(simplifiedQuery.keywords[0], simplifiedQuery.maxResults || 10);
+            searchResults = directSearchResults;
           } catch (fallbackError) {
             console.error(`备用搜索也失败:`, fallbackError);
             throw new Error(`所有搜索策略都失败: ${searchError instanceof Error ? searchError.message : String(searchError)}`);

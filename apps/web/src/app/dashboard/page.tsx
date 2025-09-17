@@ -46,7 +46,7 @@ export default function Dashboard() {
           country: company.country || 'Unknown',
           industry: company.industry,
           website: company.website,
-          status: company.analysisStatus || 'NEW',
+          status: company.status || 'NEW',
           leadScore: company.leadScore,
           contactCount: company.contactCount || 0,
           lastAnalyzed: company.lastAnalyzed,
@@ -78,7 +78,7 @@ export default function Dashboard() {
   const handleStartAnalysis = async (companyId: string) => {
     try {
       const API_BASE = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev'
-      const response = await fetch(`${API_BASE}/api/companies/${companyId}/analyze`, {
+      const response = await fetch(`${API_BASE}/api/customers/${companyId}/analyze`, {
         method: 'POST'
       })
       

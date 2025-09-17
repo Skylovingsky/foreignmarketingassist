@@ -806,7 +806,7 @@ export default async function customersRoutes(fastify: FastifyInstance) {
             keywords: companyKeywords.slice(0, 1), // 只使用1个主关键词避免查询过于复杂
             // 暂时移除location以避免查询复杂度导致400错误
             // location: customer.country,
-            maxResults: 15 // 大幅增加搜索结果数量，确保找到更多候选网站
+            maxResults: 20 // 大幅增加搜索结果数量，确保找到更多候选网站 (至少10个)
           };
           
           const searchResults = await crawler.searchAndCrawlCompanies(searchQuery);

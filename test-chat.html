@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Agent Chat</title>
+</head>
+<body>
+    <div>
+        <h1>Test Agent Chat</h1>
+        <textarea id="messageInput" placeholder="输入消息..." rows="3" cols="50"></textarea><br><br>
+        <button id="sendBtn">发送</button>
+        <button id="testFrontendBtn">测试前端API</button><br><br>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_URL = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev';
+        
+        // Test direct backend API
+        async function testBackendAPI() {
+            try {
+                const response = await fetch(`${API_URL}/api/agent/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messages: [{
+                            id: 'test',
+                            role: 'user',
+                            content: document.getElementById('messageInput').value || '你好',
+                            timestamp: new Date().toISOString()
+                        }],
+                        useRag: false,
+                        temperature: 0.7,
+                        maxTokens: 200
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                document.getElementById('result').innerHTML = `
+                    <h3>✅ 后端API测试成功!</h3>
+                    <p><strong>AI回复:</strong> ${data.message.content}</p>
+                    <p><strong>Token使用:</strong> ${data.usage.totalTokens}</p>
+                `;
+            } catch (error) {
+                document.getElementById('result').innerHTML = `
+                    <h3>❌ 后端API测试失败</h3>
+                    <p><strong>错误:</strong> ${error.message}</p>
+                `;
+            }
+        }
+        
+        // Test frontend API client
+        async function testFrontendAPI() {
+            try {
+                // Simulate the frontend API call
+                const response = await fetch('https://3000-ibr8pve55krqf22np4xrh-6532622b.e2b.dev/api/agent/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messages: [{
+                            id: 'test',
+                            role: 'user',
+                            content: document.getElementById('messageInput').value || '前端测试',
+                            timestamp: new Date().toISOString()
+                        }],
+                        useRag: false,
+                        temperature: 0.7,
+                        maxTokens: 200
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                document.getElementById('result').innerHTML = `
+                    <h3>✅ 前端API测试成功!</h3>
+                    <p><strong>AI回复:</strong> ${data.message.content}</p>
+                    <p><strong>Token使用:</strong> ${data.usage.totalTokens}</p>
+                `;
+            } catch (error) {
+                document.getElementById('result').innerHTML = `
+                    <h3>❌ 前端API测试失败</h3>
+                    <p><strong>错误:</strong> ${error.message}</p>
+                    <p><strong>可能原因:</strong> 前端没有API代理或CORS问题</p>
+                `;
+            }
+        }
+        
+        document.getElementById('sendBtn').addEventListener('click', testBackendAPI);
+        document.getElementById('testFrontendBtn').addEventListener('click', testFrontendAPI);
+    </script>
+</body>
+</html>

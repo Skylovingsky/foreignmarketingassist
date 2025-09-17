@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI搜索 - 直连版本</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+        
+        .main-content {
+            padding: 30px;
+        }
+        
+        .search-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .company-input {
+            flex: 1;
+            min-width: 250px;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        
+        .search-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        
+        .search-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .progress-section {
+            display: none;
+            background: #fff3cd;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            width: 0%;
+            transition: width 0.5s;
+        }
+        
+        .error-section {
+            display: none;
+            background: #f8d7da;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 25px;
+            color: #721c24;
+        }
+        
+        .results-section {
+            display: none;
+        }
+        
+        .report-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        
+        .report-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+        }
+        
+        .report-content {
+            padding: 25px;
+            line-height: 1.6;
+        }
+        
+        .example-companies {
+            margin-top: 15px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .example-btn {
+            padding: 6px 12px;
+            background: #e9ecef;
+            border: 1px solid #ced4da;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .example-btn:hover {
+            background: #4facfe;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 AI智能搜索 - 直连版本</h1>
+            <p>直接连接后端API，绕过代理限制</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="search-section">
+                <div class="input-group">
+                    <input type="text" 
+                           class="company-input" 
+                           id="companyInput" 
+                           placeholder="输入公司名称..."
+                           value="Tesla Motors">
+                    <button class="search-btn" id="searchBtn" onclick="startAISearch()">
+                        🚀 开始AI搜索
+                    </button>
+                </div>
+                
+                <div class="options">
+                    <div class="option">
+                        <input type="checkbox" id="includeFinancial" checked>
+                        <label for="includeFinancial">包含财务信息</label>
+                    </div>
+                    <div class="option">
+                        <input type="checkbox" id="includeProducts" checked>
+                        <label for="includeProducts">产品/服务分析</label>
+                    </div>
+                    <div class="option">
+                        <input type="checkbox" id="includeMarket" checked>
+                        <label for="includeMarket">市场地位评估</label>
+                    </div>
+                    <div class="option">
+                        <input type="checkbox" id="includeStrategy" checked>
+                        <label for="includeStrategy">商务策略建议</label>
+                    </div>
+                </div>
+                
+                <div class="example-companies">
+                    <strong>快速测试:</strong>
+                    <button class="example-btn" onclick="fillExample('Apple Inc.')">Apple Inc.</button>
+                    <button class="example-btn" onclick="fillExample('Tesla Motors')">Tesla</button>
+                    <button class="example-btn" onclick="fillExample('华为技术有限公司')">华为</button>
+                    <button class="example-btn" onclick="fillExample('Microsoft Corporation')">微软</button>
+                </div>
+            </div>
+            
+            <div class="progress-section" id="progressSection">
+                <h3>🔄 AI正在分析中...</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div id="progressText">准备开始...</div>
+            </div>
+            
+            <div class="error-section" id="errorSection">
+                <h3>❌ 分析失败</h3>
+                <div id="errorMessage"></div>
+                <button onclick="retrySearch()" style="margin-top: 10px; padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">重试</button>
+            </div>
+            
+            <div class="results-section" id="resultsSection">
+                <div class="report-card">
+                    <div class="report-header">
+                        <h2 id="reportTitle">📊 AI分析报告</h2>
+                        <div id="reportMeta"></div>
+                    </div>
+                    <div class="report-content" id="reportContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 直接使用后端API，避免代理问题
+        const BACKEND_API_URL = 'https://3001-ibr8pve55krqf22np4xrh-6532622b.e2b.dev';
+        
+        function fillExample(companyName) {
+            document.getElementById('companyInput').value = companyName;
+        }
+        
+        async function startAISearch() {
+            const companyName = document.getElementById('companyInput').value.trim();
+            if (!companyName) {
+                showError('请输入公司名称');
+                return;
+            }
+            
+            const options = {
+                includeFinancial: document.getElementById('includeFinancial').checked,
+                includeProducts: document.getElementById('includeProducts').checked,
+                includeMarket: document.getElementById('includeMarket').checked,
+                includeStrategy: document.getElementById('includeStrategy').checked
+            };
+            
+            showProgress();
+            hideResults();
+            hideError();
+            
+            const searchBtn = document.getElementById('searchBtn');
+            searchBtn.disabled = true;
+            searchBtn.textContent = '🔄 分析中...';
+            
+            try {
+                await performAISearch(companyName, options);
+            } catch (error) {
+                console.error('搜索错误:', error);
+                showError(`搜索失败: ${error.message}`);
+            } finally {
+                searchBtn.disabled = false;
+                searchBtn.textContent = '🚀 开始AI搜索';
+                hideProgress();
+            }
+        }
+        
+        async function performAISearch(companyName, options) {
+            const steps = [
+                '🔍 初始化AI分析引擎...',
+                '📊 收集公司基础信息...',
+                '💼 分析业务模式和产品...',
+                '📈 评估市场表现...',
+                '💰 处理财务数据...',
+                '📝 生成综合报告...'
+            ];
+            
+            // 模拟进度更新
+            for (let i = 0; i < steps.length; i++) {
+                updateProgress((i + 1) / steps.length * 85, steps[i]);
+                await sleep(800);
+            }
+            
+            updateProgress(90, '🤖 AI正在深度分析...');
+            
+            // 创建控制器用于超时处理
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                controller.abort();
+            }, 120000); // 2分钟超时
+            
+            try {
+                const response = await fetch(`${BACKEND_API_URL}/api/ai-search/analyze-company`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        // 添加CORS头
+                        'Access-Control-Allow-Origin': '*',
+                    },
+                    mode: 'cors',
+                    body: JSON.stringify({
+                        companyName: companyName,
+                        options: {
+                            includeFinancial: options.includeFinancial,
+                            includeProducts: options.includeProducts,
+                            includeMarket: options.includeMarket,
+                            includeStrategy: options.includeStrategy,
+                            language: 'zh-CN',
+                            depth: 'detailed'
+                        }
+                    }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API响应错误:', response.status, errorText);
+                    throw new Error(`API请求失败 (${response.status}): ${errorText.substring(0, 100)}`);
+                }
+                
+                const result = await response.json();
+                
+                if (!result.success) {
+                    throw new Error(result.error || 'AI分析失败');
+                }
+                
+                updateProgress(100, '✅ 分析完成！');
+                await sleep(500);
+                showResults(companyName, result.data.report, result.data.usage, result.data.metadata);
+                
+            } catch (error) {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    throw new Error('请求超时，请尝试选择更少的分析选项或稍后重试');
+                }
+                throw error;
+            }
+        }
+        
+        function updateProgress(percentage, text) {
+            document.getElementById('progressFill').style.width = percentage + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+        
+        function showProgress() {
+            document.getElementById('progressSection').style.display = 'block';
+            updateProgress(0, '准备开始...');
+        }
+        
+        function hideProgress() {
+            document.getElementById('progressSection').style.display = 'none';
+        }
+        
+        function showResults(companyName, reportContent, usage, metadata) {
+            document.getElementById('reportTitle').textContent = `📊 ${companyName} - AI智能分析报告`;
+            document.getElementById('reportMeta').textContent = `生成时间: ${new Date(metadata.generatedAt).toLocaleString('zh-CN')}`;
+            
+            // 格式化报告内容
+            const formattedContent = formatMarkdownToHTML(reportContent);
+            
+            // 添加统计信息
+            const statsInfo = `
+                <div style="margin-top: 25px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 14px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                        <div><strong>🤖 AI模型:</strong> ${metadata.aiModel}</div>
+                        <div><strong>⚡ 处理时间:</strong> ${(metadata.processingTimeMs / 1000).toFixed(1)}秒</div>
+                        <div><strong>📊 Token消耗:</strong> ${usage.total_tokens}</div>
+                        <div><strong>📄 报告长度:</strong> ${reportContent.length}字符</div>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 12px; color: #666;">
+                        ✨ 本报告由AI基于训练数据自主生成，数据截止至训练时间
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('reportContent').innerHTML = formattedContent + statsInfo;
+            document.getElementById('resultsSection').style.display = 'block';
+            
+            // 滚动到结果
+            document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function hideResults() {
+            document.getElementById('resultsSection').style.display = 'none';
+        }
+        
+        function showError(message) {
+            const fullMessage = `${message}
+
+🔧 技术详情:
+- 直连API: ${BACKEND_API_URL}/api/ai-search/analyze-company
+- 时间: ${new Date().toLocaleString('zh-CN')}
+- 浏览器: ${navigator.userAgent.split(' ').slice(-1)[0]}
+
+💡 解决建议:
+1. 确保网络连接正常
+2. 尝试刷新页面
+3. 选择较少的分析选项
+4. 尝试其他公司名称`;
+            
+            document.getElementById('errorMessage').textContent = fullMessage;
+            document.getElementById('errorSection').style.display = 'block';
+        }
+        
+        function hideError() {
+            document.getElementById('errorSection').style.display = 'none';
+        }
+        
+        function retrySearch() {
+            hideError();
+            startAISearch();
+        }
+        
+        function formatMarkdownToHTML(markdown) {
+            return markdown
+                .replace(/^### (.*$)/gm, '<h3 style="color: #2c3e50; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">$1</h3>')
+                .replace(/^## (.*$)/gm, '<h2 style="color: #2c3e50; margin: 25px 0 15px 0; border-bottom: 2px solid #3498db; padding-bottom: 8px;">$1</h2>')
+                .replace(/^# (.*$)/gm, '<h1 style="color: #2c3e50; margin: 30px 0 20px 0;">$1</h1>')
+                .replace(/^\- (.*$)/gm, '<li style="margin: 5px 0;">$1</li>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #2c3e50;">$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/^(.*)$/gm, '<p>$1</p>')
+                .replace(/<p><\/p>/g, '')
+                .replace(/<p>(<h[1-6].*?<\/h[1-6]>)<\/p>/g, '$1')
+                .replace(/<p>(<li.*?<\/li>)<\/p>/g, '$1')
+                .replace(/(<li.*?<\/li>)\s*(<li.*?<\/li>)/gs, function(match) {
+                    return '<ul>' + match.replace(/<\/?p>/g, '') + '</ul>';
+                });
+        }
+        
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        
+        // 回车键搜索
+        document.getElementById('companyInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                startAISearch();
+            }
+        });
+        
+        // 页面加载完成提示
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🤖 AI智能搜索 - 直连版本已就绪');
+        });
+    </script>
+</body>
+</html>

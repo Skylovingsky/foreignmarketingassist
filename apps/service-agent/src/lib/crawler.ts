@@ -313,8 +313,32 @@ export class WebCrawlerService {
     try {
       console.log(`开始搜索和爬取公司，关键词: ${query.keywords.join(', ')}`);
       
-      // 1. 使用Google搜索获取候选网站
-      const searchResults = await this.searchCompanies(query);
+      // 1. 使用Google搜索获取候选网站，如果失败则尝试备用策略
+      let searchResults;
+      try {
+        searchResults = await this.searchCompanies(query);
+      } catch (searchError) {
+        console.error(`主搜索失败，尝试简化搜索策略:`, searchError);
+        
+        // 尝试更简单的搜索策略
+        if (query.keywords.length > 0) {
+          const simplifiedQuery = {
+            keywords: [query.keywords[0]], // 只使用第一个关键词
+            maxResults: query.maxResults || 10
+          };
+          
+          try {
+            console.log(`🔄 尝试简化搜索: ${simplifiedQuery.keywords[0]}`);
+            searchResults = await this.searchCompanies(simplifiedQuery);
+          } catch (fallbackError) {
+            console.error(`备用搜索也失败:`, fallbackError);
+            throw new Error(`所有搜索策略都失败: ${searchError instanceof Error ? searchError.message : String(searchError)}`);
+          }
+        } else {
+          throw searchError;
+        }
+      }
+      
       console.log(`找到 ${searchResults.length} 个搜索结果`);
 
       // 2. 爬取每个网站

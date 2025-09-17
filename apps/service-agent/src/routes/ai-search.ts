@@ -20,6 +20,7 @@ const aiSearchRoutes: FastifyPluginAsync = async (fastify) => {
   // AI自主搜索分析端点
   fastify.post('/api/ai-search/analyze-company', async (request, reply) => {
     try {
+      console.log('收到AI搜索请求，请求体:', JSON.stringify(request.body, null, 2));
       const { companyName, options } = aiSearchRequestSchema.parse(request.body);
       
       fastify.log.info(`🤖 AI自主搜索分析请求: ${companyName}`);
@@ -43,13 +44,19 @@ const aiSearchRoutes: FastifyPluginAsync = async (fastify) => {
             processingTimeMs: processingTime,
             aiModel: 'qwen-plus',
             searchDepth: options.depth,
-            includedSections: Object.keys(options).filter(key => options[key as keyof typeof options] === true)
+            includedSections: [
+              ...(options.includeFinancial ? ['财务信息'] : []),
+              ...(options.includeProducts ? ['产品分析'] : []),
+              ...(options.includeMarket ? ['市场评估'] : []),
+              ...(options.includeStrategy ? ['战略建议'] : [])
+            ]
           },
           usage: analysisResult.usage
         }
       };
       
     } catch (error) {
+      console.error('AI搜索分析完整错误信息:', error);
       fastify.log.error(`AI搜索分析失败: ${error instanceof Error ? error.message : String(error)}`);
       
       if (error instanceof z.ZodError) {
@@ -296,10 +303,13 @@ async function performAIAnalysis(prompt: string) {
   
   return {
     content: data.choices[0].message.content,
-    usage: data.usage || {
-      prompt_tokens: 0,
-      completion_tokens: 0,
-      total_tokens: 0
+    usage: {
+      prompt_tokens: data.usage?.prompt_tokens || 0,
+      completion_tokens: data.usage?.completion_tokens || 0,
+      total_tokens: data.usage?.total_tokens || 0,
+      promptTokens: data.usage?.prompt_tokens || 0,
+      completionTokens: data.usage?.completion_tokens || 0,
+      totalTokens: data.usage?.total_tokens || 0
     }
   };
 }

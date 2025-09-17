@@ -10,6 +10,10 @@ const nextConfig = {
         source: '/api/agent/:path*',
         destination: `${agentApiUrl}/api/agent/:path*`,
       },
+      {
+        source: '/api/ai-search/:path*',
+        destination: `${agentApiUrl}/api/ai-search/:path*`,
+      },
     ];
   },
   env: {

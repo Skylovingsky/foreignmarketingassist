@@ -425,6 +425,9 @@ ${options.includeFinancial ? `## 财务状况
             updateProgress(90, '正在请求AI分析...');
             
             // 调用专门的AI搜索API进行分析
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 180000); // 3分钟超时
+            
             const response = await fetch(`${API_URL}/api/ai-search/analyze-company`, {
                 method: 'POST',
                 headers: {
@@ -440,11 +443,16 @@ ${options.includeFinancial ? `## 财务状况
                         language: 'zh-CN',
                         depth: 'detailed'
                     }
-                })
+                }),
+                signal: controller.signal
             });
             
+            clearTimeout(timeoutId);
+            
             if (!response.ok) {
-                throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
+                const errorText = await response.text();
+                console.error('API错误详情:', errorText);
+                throw new Error(`API请求失败: ${response.status} ${response.statusText}\n详情: ${errorText.substring(0, 200)}`);
             }
             
             const result = await response.json();
@@ -525,7 +533,20 @@ ${options.includeFinancial ? `## 财务状况
         
         // 显示错误
         function showError(message) {
-            document.getElementById('errorMessage').textContent = message;
+            const fullMessage = `${message}
+            
+调试信息:
+- API URL: ${API_URL}/api/ai-search/analyze-company
+- 时间: ${new Date().toLocaleString('zh-CN')}
+- 浏览器: ${navigator.userAgent.split(' ').slice(-2).join(' ')}
+
+请尝试:
+1. 检查网络连接
+2. 刷新页面重试
+3. 尝试其他公司名称
+4. 联系技术支持`;
+            
+            document.getElementById('errorMessage').textContent = fullMessage;
             document.getElementById('errorSection').style.display = 'block';
         }
         

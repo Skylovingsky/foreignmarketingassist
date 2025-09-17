@@ -803,8 +803,9 @@ export default async function customersRoutes(fastify: FastifyInstance) {
           ].filter(keyword => keyword.length > 3); // 过滤太短的关键词
 
           const searchQuery = {
-            keywords: companyKeywords.slice(0, 2), // 最多使用2个关键词
-            location: customer.country,
+            keywords: companyKeywords.slice(0, 1), // 只使用1个主关键词避免查询过于复杂
+            // 暂时移除location以避免查询复杂度导致400错误
+            // location: customer.country,
             maxResults: 15 // 大幅增加搜索结果数量，确保找到更多候选网站
           };
           

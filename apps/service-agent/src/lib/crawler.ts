@@ -632,10 +632,11 @@ export class WebCrawlerService {
     // 添加通用公司标识词，但保持简单
     searchParts.push('company OR corporation OR ltd OR inc OR llc');
     
-    // 地理位置 - 如果提供的话，添加到搜索中
-    if (query.location) {
-      searchParts.push(`"${query.location}"`);
-    }
+    // 地理位置 - 暂时注释掉以避免查询过于复杂导致400错误
+    // 后续可以在fallback机制中单独处理地理位置
+    // if (query.location) {
+    //   searchParts.push(`"${query.location}"`);
+    // }
     
     // 行业信息 - 如果提供的话
     if (query.industry) {
